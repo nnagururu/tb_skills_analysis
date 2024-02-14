@@ -1,0 +1,4 @@
+[console_scripts]
+volusim_tools_generate_experiment_video = volumetric_sim_tools.Scripts.generate_experiment_video:main
+volusim_tools_mark_removed_voxels = volumetric_sim_tools.Scripts.mark_removed_voxels:main
+volusim_tools_seg_nrrd_to_pngs = volumetric_sim_tools.Scripts.seg_nrrd_to_pngs:main

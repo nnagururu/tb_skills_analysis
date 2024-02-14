@@ -1,0 +1,8 @@
+numpy
+scipy
+rich
+click
+pynrrd
+Pillow
+natsort
+h5py
