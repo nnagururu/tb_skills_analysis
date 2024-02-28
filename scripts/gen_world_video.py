@@ -12,19 +12,23 @@ def main():
                             action="store", 
                             dest="exp_dir", 
                             help="Specify experiments directory", 
-                            default = '/Users/nimeshnagururu/Documents/skills_analysis/SDF_UserStudy_Data/Participant_8/2023-02-13 09:39:29_anatT_haptic_P8T9')
+                            default = '/Users/nimeshnagururu/Documents/tb_skills_analysis/SDF_UserStudy_Data/Participant_8/2023-02-13 09:39:29_anatT_haptic_P8T9')
     
     args = parser.parse_args()
+    exp_dir = Path(args.exp_dir)
+
+    output_vid_f = exp_dir / ('000/' + 'world.mp4')
+    output_timestamps_f = exp_dir / ('000/' +'world_timestamps.npy')
     
-    reader = exp_reader(Path(args.exp_dir))
+    reader = exp_reader(exp_dir)
     od = reader._data
-    
+
     world_timestamps = od['data']['time']
     l_imgs = od['data']['l_img']
 
     frate = 30
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    video = cv2.VideoWriter('world.mp4', fourcc, frate, (l_imgs[0].shape[1], l_imgs[0].shape[0]))
+    video = cv2.VideoWriter(str(output_vid_f), fourcc, frate, (l_imgs[0].shape[1], l_imgs[0].shape[0]))
 
     # time_diffs = np.diff(world_timestamps, prepend=world_timestamps[0])
     time_diffs = np.diff(world_timestamps)
@@ -57,7 +61,7 @@ def main():
 
     video.release()
 
-    np.save('world_timestamps.npy', np.array(upsampled_timestamps))
+    np.save(output_timestamps_f, np.array(upsampled_timestamps))
 
     # for img in l_imgs:
     #     video.write(img)

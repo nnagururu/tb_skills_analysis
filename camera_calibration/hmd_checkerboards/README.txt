@@ -1,0 +1,1 @@
+Note that the pictures on this folder were taken on 2/26/24 using Nimesh's Iphone 14 Max

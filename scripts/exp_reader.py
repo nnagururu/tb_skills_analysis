@@ -21,6 +21,7 @@ class exp_reader:
     
     def get_merged_data(self, verbose = False):
         self._clear_data()
+        print(self.recording_path)
         
         self.hdf5_files = list(self.recording_path.glob('*.hdf5'))
         self.hdf5_files = natsorted(self.hdf5_files)
