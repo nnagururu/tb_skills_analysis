@@ -478,27 +478,32 @@ class StrokeMetrics:
 
         return metrics, bucket_dict
 
-class GenMetrics:
-    def __init__(self, stroke_extr, exp_dir):
-        # Not sure if this lazy intiializaiton with a stroke_extr object is good practice
-        self.exp = stroke_extr.exp
-        self.stroke_ends = stroke_extr.stroke_ends
-        self.data_vrm_mask = stroke_extr.data_vrm_mask
-        self.exp_dir = exp_dir
+# class GenMetrics:
+#     def __init__(self, stroke_extr, exp_dir):
+#         # Not sure if this lazy intiializaiton with a stroke_extr object is good practice
+#         self.exp = stroke_extr.exp
+#         self.stroke_ends = stroke_extr.stroke_ends
+#         self.data_vrm_mask = stroke_extr.data_vrm_mask
+#         self.exp_dir = exp_dir
     
-    def procedure_time(self):
-        # Copy of method from StrokeMetrics, should replace redundnacy
-        data_ts_vrm = self.exp.data_ts[self.data_vrm_mask]
-        stroke_endtimes = data_ts_vrm[self.stroke_ends.astype(bool)]
-        stroke_endtimes = np.insert(stroke_endtimes, 0, min(data_ts_vrm))
+#     def procedure_time(self):
+#         # Copy of method from StrokeMetrics, should replace redundnacy
+#         data_ts_vrm = self.exp.data_ts[self.data_vrm_mask]
+#         stroke_endtimes = data_ts_vrm[self.stroke_ends.astype(bool)]
+#         stroke_endtimes = np.insert(stroke_endtimes, 0, min(data_ts_vrm))
 
-        return stroke_endtimes[-1] - stroke_endtimes[0]
+#         return stroke_endtimes[-1] - stroke_endtimes[0]
     
-    def vxl_rmvd_dictionary(self):
+#     def metadata_dict(self):
+#         # metadata dictionary has participant_name, volume_name, assist_mode, and trial_number
+#         with open(self.exp_dir + '/metadata.json', 'r') as f:
+#             metadata = f.read()
 
-
+#         return metadata
     
-    def
+#     def vxl_rmvd_dictionary(self):
+
+
 
     
 

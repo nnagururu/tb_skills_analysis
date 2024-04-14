@@ -5,13 +5,16 @@ import numpy as np
 import h5py
 import pandas as pd
 
-class exp_reader:
-    def __init__(self, recording_path):
-        self.recording_path = recording_path
+class ExpReader:
+    def __init__(self, recording_path, ignore_keys = ['depth', 'r_img', 'l_img', 'segm'], verbose = False):
+        self.recording_path = Path(recording_path)
         self.hdf5_files = []
         self._data = OrderedDict()
+        self.ignore_keys = ignore_keys
 
-        self.get_merged_data()
+
+        self._get_merged_data(verbose = verbose)
+        self.extract_from_data()
 
     def _clear_data(self):
         for g in self._data.keys():
@@ -19,7 +22,7 @@ class exp_reader:
 
         self.hdf5_files = []
     
-    def get_merged_data(self, verbose = False):
+    def _get_merged_data(self, verbose):
         self._clear_data()
         print(self.recording_path)
         
@@ -28,7 +31,15 @@ class exp_reader:
         print("Number of Files ", len(self.hdf5_files))
 
         for idx, file_name in enumerate(self.hdf5_files):
-            file = h5py.File(file_name, "r")
+            try:
+                file = h5py.File(file_name, "r")
+            except OSError as e:
+                print(f"Error opening file {file_name}: {e}")
+                if verbose:
+                    print(f"Skipping file {file_name} due to error.")
+                continue  # Skip to the next file
+            
+            
             if verbose:
                 print(idx, "Opening", file_name)
             for grp in file.keys():
@@ -40,7 +51,7 @@ class exp_reader:
                     print("\t Processing Group ", grp)
                 for dset in file[grp].keys():
                     # print(dset)
-                    if grp == "data" and (dset == "depth" or dset == "r_img" or dset == "pose_mastoidectomy_volume"):
+                    if grp == "data" and (dset in self.ignore_keys):
                         continue
 
                     if len(file[grp][dset]) == 0:
@@ -55,5 +66,18 @@ class exp_reader:
                             self._data[grp][dset], file[grp][dset][()], axis=0
                         )
             file.close()
+    
+    def extract_from_data(self):
+        self.cam_poses = self._data['data']['pose_main_camera']
+        self.vol_poses = self._data['data']['pose_mastoidectomy_volume']
+        self.d_poses = self._data['data']['pose_mastoidectomy_drill']
+        self.data_ts = self._data['data']['time']
+
+        if 'drill_force_feedback' in self._data:
+            self.forces = self._data['drill_force_feedback']['wrench']
+            self.forces_ts = self._data['drill_force_feedback']['time_stamp']
         
-        return self._data 
+        self.v_rm_ts = self._data['voxels_removed']['voxel_time_stamp']
+        self.v_rm_colors = self._data['voxels_removed']['voxel_color']
+        self.v_rm_locs = self._data['voxels_removed']['voxel_removed']
+        
