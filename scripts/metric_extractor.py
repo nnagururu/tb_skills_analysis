@@ -1,14 +1,33 @@
 import numpy as np
 import pandas as pd
+from collections import defaultdict
 from exp_reader import ExpReader
 from scipy import integrate
 from scipy.spatial.transform import Rotation as R
-from hdf5_utils import save_dict_to_hdf5, load_hdf5_to_dict
+from hdf5_utils import save_dict_to_hdf5, load_dict_from_hdf5
 from pathlib import Path
 from plot_stroke_metrics import StrokeMetricsVisualizer, stroke_metrics_visualizer
 
 
-
+# {short_name: [color, "long_name"]}
+anatomy_dict = {
+    "Bone": ["255 249 219", "Bone"],
+    "Malleus": ["233 0 255", "Malleus"],
+    "Incus": ["0 255 149", "Incus"],
+    "Stapes": ["63 0 255", "Stapes"],
+    "BonyLabyrinth": ["91 123 91", "Bony_Labyrinth"],
+    "IAC": ["244 142 52", "IAC"],
+    "SuperiorVestNerve": ["255 191 135", "Superior_Vestibular_Nerve"],
+    "InferiorVestNerve": ["121 70 24", "Inferior_Vestibular_Nerve"],
+    "CochlearNerve": ["219 244 52", "Cochlear_Nerve"],
+    "FacialNerve": ["244 214 49", "Facial_Nerve"],
+    "Chorda": ["151 131 29", "Chorda_Tympani"],
+    "ICA": ["216 100 79", "ICA"],
+    "SigSinus": ["110 184 209", "Sinus_+_Dura"],
+    "VestAqueduct": ["91 98 123", "Vestibular_Aqueduct"],
+    "TMJ": ["100 0 0", "TMJ"],
+    "EAC": ["255 225 214", "EAC"],
+}
 
 class StrokeExtractor:
     def __init__(self, exp):
@@ -44,7 +63,7 @@ class StrokeExtractor:
 
         return drill_periods
 
-    def _filter_pose_ts_within_periods(self, data_ts, v_rm_ts, ):
+    def _filter_pose_ts_within_periods(self, data_ts, v_rm_ts):
         """
         Filters and retains time points that fall within any of the specified time periods.
 
@@ -409,16 +428,18 @@ class StrokeMetrics:
         return avg_angle_wrt_camera
 
     def voxels_removed(self, stroke_endtimes, v_rm_ts):
+        #TODO
         cum_vxl_rm_stroke_end = self.gen_cum_vxl_rm_stroke_end(stroke_endtimes, v_rm_ts)
         vxls_removed = np.diff(cum_vxl_rm_stroke_end, prepend=0)
 
         return vxls_removed
 
     def gen_cum_vxl_rm_stroke_end(self, stroke_endtimes, v_rm_ts):
+        #TODO
         cum_vxl_rm_stroke_end = []
-        stroke_ind = 1
+        stroke_ind = 1 # starting from 1 bc stroke_endtimes[0] is min(v_rm_ts) not necessarily a stroke_end
         
-        for i in range(len(v_rm_ts)): # starting from 1 bc stroke_endtimes[0] is min(v_rm_ts) not necessarily a stroke_end
+        for i in range(len(v_rm_ts)): 
             if v_rm_ts[i] > stroke_endtimes[stroke_ind]:
                 cum_vxl_rm_stroke_end.append(i)
                 stroke_ind += 1
@@ -478,30 +499,74 @@ class StrokeMetrics:
 
         return metrics, bucket_dict
 
-# class GenMetrics:
-#     def __init__(self, stroke_extr, exp_dir):
-#         # Not sure if this lazy intiializaiton with a stroke_extr object is good practice
-#         self.exp = stroke_extr.exp
-#         self.stroke_ends = stroke_extr.stroke_ends
-#         self.data_vrm_mask = stroke_extr.data_vrm_mask
-#         self.exp_dir = exp_dir
+class GenMetrics:
+    def __init__(self, stroke_extr, exp_dir):
+        # Not sure if this lazy intiializaiton with a stroke_extr object is good practice
+        self.exp = stroke_extr.exp
+        self.stroke_ends = stroke_extr.stroke_ends
+        self.data_vrm_mask = stroke_extr.data_vrm_mask
+        self.exp_dir = exp_dir
     
-#     def procedure_time(self):
-#         # Copy of method from StrokeMetrics, should replace redundnacy
-#         data_ts_vrm = self.exp.data_ts[self.data_vrm_mask]
-#         stroke_endtimes = data_ts_vrm[self.stroke_ends.astype(bool)]
-#         stroke_endtimes = np.insert(stroke_endtimes, 0, min(data_ts_vrm))
+    def procedure_time(self):
+        # Copy of method from StrokeMetrics, should replace redundnacy
+        data_ts_vrm = self.exp.data_ts[self.data_vrm_mask]
+        stroke_endtimes = data_ts_vrm[self.stroke_ends.astype(bool)]
+        stroke_endtimes = np.insert(stroke_endtimes, 0, min(data_ts_vrm))
 
-#         return stroke_endtimes[-1] - stroke_endtimes[0]
+        return stroke_endtimes[-1] - stroke_endtimes[0]
     
-#     def metadata_dict(self):
-#         # metadata dictionary has participant_name, volume_name, assist_mode, and trial_number
-#         with open(self.exp_dir + '/metadata.json', 'r') as f:
-#             metadata = f.read()
+    def num_strokes(self):
+        # Just a count of strokes removed
+        return sum(self.stroke_ends)
+    
+    def metadata_dict(self):
+        # metadata dictionary has participant_name, volume_name, assist_mode, and trial_number
+        with open(self.exp_dir + '/metadata.json', 'r') as f:
+            metadata = f.read()
 
-#         return metadata
+        return metadata
     
-#     def vxl_rmvd_dictionary(self):
+    def voxel_rmvd_dict(self):
+        # Returns a dictionary with the number of voxels removed (value) for each anatomy (key)
+        vxl_rmvd_dict = defaultdict(int)
+        v_rm_colors = np.array(self.exp.v_rm_colors).astype(np.int32)
+        v_rm_colors_df = pd.DataFrame(v_rm_colors, columns=["ts_idx", "r", "g", "b", "a"])
+
+        # add a column with the anatomy names
+        for name, anatomy_info_list in anatomy_dict.items():
+            color, full_name = anatomy_info_list
+            color = list(map(int, color.split(" ")))
+            v_rm_colors_df.loc[
+                (v_rm_colors_df["r"] == color[0])
+                & (v_rm_colors_df["g"] == color[1])
+                & (v_rm_colors_df["b"] == color[2]),
+                "anatomy_name",
+            ] = name
+        
+        # Count number of removed voxels of each anatomy
+        voxel_summary = v_rm_colors_df.groupby(["anatomy_name"]).count()
+
+        for anatomy in voxel_summary.index:
+            vxl_rmvd_dict[anatomy] += voxel_summary.loc[anatomy, "a"]
+        
+        return dict(vxl_rmvd_dict)
+    
+    def burr_change_dict(self):
+        burr_chg_dict = defaultdict(int)
+        burr_chg_sz = np.array(self.exp.burr_chg_sz)
+        burr_chg_ts = np.array(self.exp.burr_chg_ts)
+
+        print(burr_chg_sz.shape)
+        print(burr_chg_ts.shape)
+        print(burr_chg_sz[:5])
+        print(burr_chg_ts[:5])
+
+        # for i in range(len(burr_chg_ts)):
+        #     burr_chg_dict[burr_chg_ts[i]] = burr_chg_sz[i]
+        
+        # return dict(burr_chg_dict)
+
+        
 
 
 
@@ -512,26 +577,34 @@ def main():
     exps = exp_csv['exp_dir']
 
     # for i in range(len(exps)):
-    novice_exp = ExpReader(exps[46], verbose = True)
+    # novice_exp = ExpReader('/Users/nimeshnagururu/Documents/tb_skills_analysis/data/unit_test_data/multiple_strokes_w_contact', verbose = True)
+    novice_exp = ExpReader(exps[93], verbose = True)
+    v_rm_ts = np.array(novice_exp.v_rm_ts)
+    v_rm_locs = np.array(novice_exp.v_rm_locs)
+    v_rm_colors = np.array(novice_exp.v_rm_colors)
+    print(v_rm_ts.shape)
+    print(v_rm_locs.shape)
+    # print(v_rm_locs[:-5,:])
+    print(v_rm_colors.shape)
+    # print(v_rm_colors[:-5,:])    
+    print(len(np.unique(v_rm_colors[:,0])))
+    return
     novice_stroke_extr = StrokeExtractor(novice_exp)
     novice_stroke_metr = StrokeMetrics(novice_stroke_extr)
+    
     novice_metrics_dict = novice_stroke_metr.calc_metrics()
     novice_bucket_dict = novice_stroke_metr.assign_strokes_to_voxel_buckets()
-    for key, value in novice_metrics_dict.items():
-        print(key, value.shape)
     
-    visualizer1 = StrokeMetricsVisualizer(novice_metrics_dict, novice_bucket_dict, novice_metrics_dict, novice_bucket_dict, plot_previous_bucket=True)
-    # visualizer2 = stroke_metrics_visualizer(novice_metrics_dict, novice_bucket_dict)
+    # visualizer1 = StrokeMetricsVisualizer(novice_metrics_dict, novice_bucket_dict, novice_metrics_dict, novice_bucket_dict, plot_previous_bucket=True)
+    # visualizer1.interactive_plot_buckets() 
 
-    bin_edges_1 = visualizer1.precompute_bin_edges()
-    # bin_edges_2 = visualizer2.precompute_bin_edges()
+    novice_gen_metr = GenMetrics(novice_stroke_extr, exps[46])
+    print(novice_gen_metr.procedure_time())
+    print(novice_gen_metr.metadata_dict())
+    novice_gen_metr.voxel_rmvd_dict()
+    novice_gen_metr.burr_change_dict()
 
-    print(visualizer1.find_max_frequency_per_metric(bin_edges_1)) 
-    # print(visualizer2.find_max_frequency_per_metric(bin_edges_2))     
-    # visualizer.plot_metrics()
-
-    # visualizer = StrokeMetricsVisualizer(metrics_dict1, bucket_dict1, metrics_dict2=metrics_dict2, bucket_dict2=bucket_dict2, plot_previous_bucket=True)
-    visualizer1.interactive_plot_buckets() 
+    
 
     # att_exp = exp_reader(exps[46], verbose = True)
     # att_stroke_extr = stroke_extractor(att_exp)

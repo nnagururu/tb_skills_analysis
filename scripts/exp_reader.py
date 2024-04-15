@@ -12,7 +12,6 @@ class ExpReader:
         self._data = OrderedDict()
         self.ignore_keys = ignore_keys
 
-
         self._get_merged_data(verbose = verbose)
         self.extract_from_data()
 
@@ -80,4 +79,9 @@ class ExpReader:
         self.v_rm_ts = self._data['voxels_removed']['voxel_time_stamp']
         self.v_rm_colors = self._data['voxels_removed']['voxel_color']
         self.v_rm_locs = self._data['voxels_removed']['voxel_removed']
+
+        if 'burr_size' in self._data['burr_change']:
+            self.burr_chg_sz = self._data['burr_change']['burr_size']
+            self.burr_chg_ts = self._data['burr_change']['time_stamp']
+
         

@@ -10,11 +10,14 @@ class StrokeMetricsVisualizer:
     def __init__(self, metrics_dict, bucket_dict, metrics_dict2=None, bucket_dict2=None, plot_previous_bucket=False, 
                  metrics_to_plot = ['length', 'velocity', 'acceleration', 'vxls_removed',
                                     'curvature', 'force', 'angle_wrt_bone', 'angle_wrt_camera']):
+        
+        # Subset only common keys between two metrics_dict if specified
         if metrics_dict2 is not None:
             common_keys = set(metrics_dict.keys()).intersection(metrics_dict2.keys())
             metrics_dict = {key: metrics_dict[key] for key in common_keys}
             metrics_dict2 = {key: metrics_dict2[key] for key in common_keys}
 
+        # Instantiate filtered dictionaries
         self.metrics_dict, self.bucket_assignments = self.init_filtered_dicts(metrics_dict, bucket_dict, metrics_to_plot)
         
         if metrics_dict2 is not None:
@@ -23,14 +26,18 @@ class StrokeMetricsVisualizer:
             self.metrics_dict2 = None
             self.bucket_assignments2 = None
 
-        self.num_buckets = max(bucket_dict['bucket_assignments']) + 1
-        self.plot_previous_bucket = plot_previous_bucket
+        # Dicts for labels
         self.xlabels = {'length': 'length (m)', 'velocity': 'velocity (m/s)', 'acceleration': 'acceleration (m/s^2)',
                         'jerk': 'jerk (m/s^3)', 'vxls_removed': 'voxels removed (unitless)','curvature': 'curvature (unitless)',
                         'angle_wrt_bone': 'angle (degrees)', 'angle_wrt_camera': 'angle (degrees)', 'force': 'force (N)'}
         self.titles = {'length': 'Stroke Length', 'velocity': 'Stroke Velocity', 'acceleration': 'Stroke Acceleration',
                        'jerk': 'Stroke Jerk', 'curvature': 'Stroke Curvature', 'angle_wrt_bone': 'Drill Angle w.r.t. Bone',
                        'angle_wrt_camera': 'Drill Angle w.r.t Camera', 'force': 'Stroke Force', 'vxls_removed': 'Voxels Removed per Stroke'}
+        
+        self.num_buckets = max(bucket_dict['bucket_assignments']) + 1
+        self.plot_previous_bucket = plot_previous_bucket
+        self.available_metrics_to_plot = [metric for metric in metrics_to_plot if metric in self.metrics_dict]
+
 
     def init_filtered_dicts(self, metrics_dict, bucket_dict, metrics_to_plot):
         filtered_dict = {}
@@ -43,6 +50,8 @@ class StrokeMetricsVisualizer:
             filtered_bucket_assgn[title] = bucket_dict['bucket_assignments'][filter_mask]
             if bucket_dict['bucket_assignments'][filter_mask].size == 0:
                 raise ValueError(f"No data left after outlier removal for metric {title}.")
+            
+        print(filtered_dict.keys())
         
         return filtered_dict, filtered_bucket_assgn
 
@@ -108,7 +117,7 @@ class StrokeMetricsVisualizer:
         return max_freq_per_metric
 
     def plot_bucket_data(self, bucket_index, fig, axes, bin_edges_dict, max_freq_per_metric):
-        for ax, key in zip(axes, bin_edges_dict.keys()):
+        for ax, key in zip(axes, self.available_metrics_to_plot):
             ax.clear()
 
             # Determine the number of datasets and whether previous buckets are being plotted
