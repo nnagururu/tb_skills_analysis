@@ -5,6 +5,7 @@ from matplotlib.widgets import Slider
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.widgets import Slider
+from mpl_toolkits import mplot3d
 
 class StrokeMetricsVisualizer:
     def __init__(self, metrics_dict, bucket_dict, metrics_dict2=None, bucket_dict2=None, plot_previous_bucket=False, 
@@ -194,156 +195,25 @@ class StrokeMetricsVisualizer:
         slider.on_changed(update)
         plt.show()
 
-class stroke_metrics_visualizer:
-    def __init__(self, metrics_dict, bucket_dict):
-        self.metrics_dict = metrics_dict
-        self.bucket_assignments = bucket_dict['bucket_assignments']
-        self.bucket_ranges = bucket_dict['bucket_ranges']
+def rgb_to_hex(r, g, b):
+    return '#%02x%02x%02x' % (int(r), int(g), int(b))
 
-    def remove_outliers(self, data, method = 'std'):
-        """Remove outliers using a threshold of three standard deviations from the mean."""
-        if method == 'std':
-            mean = np.mean(data)
-            std_dev = np.std(data)
-            lower_bound = mean - 3 * std_dev
-            upper_bound = mean + 3 * std_dev
-        elif method == 'iqr':
-            Q1, Q3 = np.percentile(data, [25, 75])
-            IQR = Q3 - Q1
-            lower_bound = Q1 - 1.5 * IQR
-            upper_bound = Q3 + 1.5 * IQR
-        else:
-            raise ValueError("Invalid method. Choose 'std' or 'iqr'.")
-        return data[(data >= lower_bound) & (data <= upper_bound)]
+def plot_3d_vx_rmvd(exp):
+    vrm = exp.v_rm_locs
+    vcol = exp.v_rm_colors
 
-    def plot_metrics(self):
-        fig, axes = plt.subplots(nrows=2, ncols=4, figsize=(15, 10))
-        fig.suptitle('Histograms of Stroke Metrics')
+    colors = [None for _ in range(vcol.shape[0])]
+    for i, c in enumerate(vcol):
+        colors[i] = rgb_to_hex(c[1], c[2], c[3])
 
-        # Flatten the axes array for easy iteration
-        axes = axes.flatten()
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
 
-        # Data and titles for each subplot
-        metrics = self.metrics_dict.values()
-        titles = self.metrics_dict.keys()
-
-        # Generate histograms for each metric
-        for ax, metric, title in zip(axes, metrics, titles):
-            filtered_metric = self.remove_outliers(np.array(metric), method = 'std')  # Filter out outliers
-            ax.hist(filtered_metric, bins='auto')  # 'auto' lets numpy decide the number of bins
-            ax.set_title(title)
-            ax.set_ylabel('Frequency')
-            ax.set_xlabel('Value')
-
-        # Adjust layout to prevent overlap
-        # plt.tight_layout()
-
-        # Adjust top margin to accommodate the main title
-        plt.subplots_adjust(top=0.9)
-
-        plt.show()
-
-        # # Wait for a key press to terminate
-        # print("Press any key or click on the plot to continue...")
-        # plt.waitforbuttonpress()
-
-        # # Close the plot
-        # plt.close()
-
-    def precompute_bin_edges(self, num_bins = 15):
-        bin_edges_dict = {}
-        filtered_metrics = {title: self.remove_outliers(np.array(metric), method='std') for title, metric in self.metrics_dict.items()}
-        
-        for title, metric in filtered_metrics.items():
-            # Determine the global min and max across all windows if applicable
-            global_min = np.min(metric)
-            global_max = np.max(metric)
-            # Define bins explicitly in a range that covers all data for the metric
-            bins = np.linspace(global_min, global_max, num=num_bins + 1)  # 20 bins example
-            bin_edges_dict[title] = bins
-        return bin_edges_dict
-    
-
-    def find_max_frequency_per_metric(self, bin_edges_dict):
-        max_freq_per_metric = {}
-        for title, metric in self.metrics_dict.items():
-            max_freq = 0
-            for bucket_index in range(max(self.bucket_assignments) + 1):
-                bucket_indices = np.where(self.bucket_assignments == bucket_index)[0]
-                if bucket_indices.size > 0:
-                    metric_data = metric[bucket_indices]
-                    filtered_metric = self.remove_outliers(metric_data, method='std')
-                    counts, _ = np.histogram(filtered_metric, bins=bin_edges_dict[title])
-                    max_freq = max(max_freq, counts.max())
-            max_freq_per_metric[title] = max_freq
-        return max_freq_per_metric
-    
-    def plot_bucket_data(self, bucket_index, fig, axes, bin_edges_dict, max_freq_per_metric):        
-        for ax, (title, metric) in zip(axes, self.metrics_dict.items()):
-            ax.clear()  # Clear current axes
-
-            # Calculate bar widths based on bin widths
-            bin_widths = np.diff(bin_edges_dict[title])
-            bar_width = bin_widths.min() * 0.4  # Choose a width 40% of the minimum bin width
-
-            # Calculate center positions for the bars
-            bin_centers = (bin_edges_dict[title][:-1] + bin_edges_dict[title][1:]) / 2
-
-            # Plot previous bucket in lighter color if available
-            if bucket_index > 0:
-                prev_indices = np.where(self.bucket_assignments == bucket_index - 1)[0]
-                if prev_indices.size > 0:
-                    stroke_start_prev = prev_indices[0]
-                    stroke_end_prev = prev_indices[-1] + 1  # Include the last stroke in the range
-                    metric_data_prev = metric[stroke_start_prev:stroke_end_prev]
-                    filtered_metric_prev = self.remove_outliers(np.array(metric_data_prev), method='std')
-                    counts_prev, _ = np.histogram(filtered_metric_prev, bins=bin_edges_dict[title])
-                    # Position previous bars to the left of the bin center
-                    ax.bar(bin_centers - bar_width / 2, counts_prev, width=bar_width, align='center', color="#b0c4de", alpha=0.5, label='Previous Bucket')
-
-            # Plot current bucket
-            current_indices = np.where(self.bucket_assignments == bucket_index)[0]
-            if current_indices.size > 0:
-                stroke_start_current = current_indices[0]
-                stroke_end_current = current_indices[-1] + 1  # Include the last stroke in the range
-                metric_data_current = metric[stroke_start_current:stroke_end_current]
-                filtered_metric_current = self.remove_outliers(np.array(metric_data_current), method='std')
-                counts_current, _ = np.histogram(filtered_metric_current, bins=bin_edges_dict[title])
-                # Position current bars to the right of the bin center
-                ax.bar(bin_centers + bar_width / 2, counts_current, width=bar_width, align='center', color="#307EC7", alpha=0.75, label='Current Bucket')
-
-            ax.set_ylim(0, max_freq_per_metric[title])
-            ax.set_title(f"{title}")
-            ax.set_ylabel('Frequency')
-            ax.set_xlabel('Value')
-            ax.grid(True, which='both', axis='y', linestyle='--', alpha=0.7)
-            ax.legend()
-
-        fig.suptitle(f'Stroke Metrics for Bucket {bucket_index + 1}', fontsize=16)
-        plt.tight_layout(rect=[0, 0.03, 1, 0.95])
-        plt.draw()
-
-    def interactive_plot_buckets(self, num_buckets=10, num_bins=15):
-        ncols = np.ceil(len(self.metrics_dict)/2).astype(int)
-        fig, axes = plt.subplots(nrows=2, ncols=ncols, figsize=(15, 10))
-        fig.subplots_adjust(bottom=0.25)
-        axes = axes.flatten()
-
-        bin_edges_dict = self.precompute_bin_edges(num_bins=num_bins)
-        max_freq_per_metric = self.find_max_frequency_per_metric(bin_edges_dict)
-
-        def update(val):
-            bucket_index = int(slider.val)
-            self.plot_bucket_data(bucket_index, fig, axes, bin_edges_dict, max_freq_per_metric)
-
-        # Initial plot
-        self.plot_bucket_data(0, fig, axes, bin_edges_dict, max_freq_per_metric)
-
-        # Setup slider
-        num_steps = num_buckets
-        ax_slider = plt.axes([0.1, 0.05, 0.8, 0.03], facecolor='lightgoldenrodyellow')
-        slider = Slider(ax=ax_slider, label='Bucket Step', valmin=0, valmax=num_steps-1, valinit=0, valstep=1)
-        slider.on_changed(update)
-        self.slider = slider
-
-        plt.show()
+    ax.scatter(vrm[:, 1], vrm[:, 2], vrm[:, 3], alpha=.3, c=colors)
+    # ax.scatter([1, 2, 3], [5, 6, 4], [9, 5, 4], label="X")
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+    # plt.legend(["Dura", "Tegmen"])
+    plt.title('Removed Voxels')
+    plt.show()

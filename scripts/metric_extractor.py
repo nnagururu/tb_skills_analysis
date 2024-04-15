@@ -6,7 +6,7 @@ from scipy import integrate
 from scipy.spatial.transform import Rotation as R
 from hdf5_utils import save_dict_to_hdf5, load_dict_from_hdf5
 from pathlib import Path
-from plot_stroke_metrics import StrokeMetricsVisualizer, stroke_metrics_visualizer
+from plotting_skills_analysis import StrokeMetricsVisualizer, plot_3d_vx_rmvd
 
 
 # {short_name: [color, "long_name"]}
@@ -512,6 +512,7 @@ class GenMetrics:
         data_ts_vrm = self.exp.data_ts[self.data_vrm_mask]
         stroke_endtimes = data_ts_vrm[self.stroke_ends.astype(bool)]
         stroke_endtimes = np.insert(stroke_endtimes, 0, min(data_ts_vrm))
+        self.stroke_endtimes = stroke_endtimes
 
         return stroke_endtimes[-1] - stroke_endtimes[0]
     
@@ -551,21 +552,52 @@ class GenMetrics:
         
         return dict(vxl_rmvd_dict)
     
-    def burr_change_dict(self):
-        burr_chg_dict = defaultdict(int)
+    def burr_change_dict(self, threshold = 0.8):
+        # returns dictionary with burr size, and percent time spent in each burr size
+        #TODO change to percent voxel removed in each burr size
+        if self.exp.burr_chg_sz == None:
+            burr_chg_dict = {'6 mm': 1.0}
+            return burr_chg_dict
+
         burr_chg_sz = np.array(self.exp.burr_chg_sz)
         burr_chg_ts = np.array(self.exp.burr_chg_ts)
 
-        print(burr_chg_sz.shape)
-        print(burr_chg_ts.shape)
-        print(burr_chg_sz[:5])
-        print(burr_chg_ts[:5])
+        burr_chg_sz = np.insert(burr_chg_sz, 0, 6) # 6 is starting burr size
+        burr_chg_ts = np.append(burr_chg_ts, self.stroke_endtimes[-1]) # changing time stamps to represent the time at which the burr size changes from corresponding size (not to) 
 
-        # for i in range(len(burr_chg_ts)):
-        #     burr_chg_dict[burr_chg_ts[i]] = burr_chg_sz[i]
+       
+        # calculate differences between consecutive changes
+        diffs = np.diff(burr_chg_ts)
+        diffs = np.append(diffs, True) # keep last change
+
+        # select elements where the difference is >= 0.8s
+        burr_chg_sz = burr_chg_sz[diffs >= threshold]
+        burr_chg_ts = burr_chg_ts[diffs >= threshold]
+
+        burr_sz_duration = np.diff(burr_chg_ts, prepend=self.stroke_endtimes[0])
+        relative_burr_duration = burr_sz_duration / self.procedure_time()
+
+
+        burr_chg_dict = {str(burr_size) + ' mm': 0 for burr_size in np.unique(burr_chg_sz)}
+        for i in range(len(burr_chg_ts)):
+            burr_size_str = str(burr_chg_sz[i]) + ' mm'
+            burr_chg_dict[burr_size_str] += relative_burr_duration[i]
         
-        # return dict(burr_chg_dict)
+        return dict(burr_chg_dict)
+    
+    def calc_gen_metrics(self):
+        procedure_time = self.procedure_time()
+        num_strokes = self.num_strokes()
+        metadata = self.metadata_dict()
+        vxl_rmvd = self.voxel_rmvd_dict()
+        burr_change = self.burr_change_dict()
 
+        self.gen_metrics_dict = {'procedure_time': procedure_time, 'num_strokes': num_strokes, 'metadata': metadata, 'voxels_removed': vxl_rmvd, 'burr_change': burr_change}
+
+        return self.gen_metrics_dict
+    
+    def save_gen_metrics(self):
+        save_dict_to_hdf5(self.gen_metrics_dict, self.exp_dir + '/gen_metrics.hdf5')
         
 
 
@@ -578,32 +610,22 @@ def main():
 
     # for i in range(len(exps)):
     # novice_exp = ExpReader('/Users/nimeshnagururu/Documents/tb_skills_analysis/data/unit_test_data/multiple_strokes_w_contact', verbose = True)
-    novice_exp = ExpReader(exps[93], verbose = True)
+    novice_exp = ExpReader(exps[92], verbose = True)
     v_rm_ts = np.array(novice_exp.v_rm_ts)
-    v_rm_locs = np.array(novice_exp.v_rm_locs)
-    v_rm_colors = np.array(novice_exp.v_rm_colors)
-    print(v_rm_ts.shape)
-    print(v_rm_locs.shape)
-    # print(v_rm_locs[:-5,:])
-    print(v_rm_colors.shape)
-    # print(v_rm_colors[:-5,:])    
-    print(len(np.unique(v_rm_colors[:,0])))
-    return
+    
     novice_stroke_extr = StrokeExtractor(novice_exp)
     novice_stroke_metr = StrokeMetrics(novice_stroke_extr)
     
     novice_metrics_dict = novice_stroke_metr.calc_metrics()
     novice_bucket_dict = novice_stroke_metr.assign_strokes_to_voxel_buckets()
     
-    # visualizer1 = StrokeMetricsVisualizer(novice_metrics_dict, novice_bucket_dict, novice_metrics_dict, novice_bucket_dict, plot_previous_bucket=True)
-    # visualizer1.interactive_plot_buckets() 
+    # visualizer = StrokeMetricsVisualizer(novice_metrics_dict, novice_bucket_dict, novice_metrics_dict, novice_bucket_dict, plot_previous_bucket=True)
+    # visualizer.interactive_plot_buckets() 
 
     novice_gen_metr = GenMetrics(novice_stroke_extr, exps[46])
-    print(novice_gen_metr.procedure_time())
-    print(novice_gen_metr.metadata_dict())
-    novice_gen_metr.voxel_rmvd_dict()
-    novice_gen_metr.burr_change_dict()
+    novice_gen_metr.calc_gen_metrics()
 
+    plot_3d_vx_rmvd(novice_exp)
     
 
     # att_exp = exp_reader(exps[46], verbose = True)

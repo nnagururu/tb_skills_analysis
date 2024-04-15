@@ -83,5 +83,8 @@ class ExpReader:
         if 'burr_size' in self._data['burr_change']:
             self.burr_chg_sz = self._data['burr_change']['burr_size']
             self.burr_chg_ts = self._data['burr_change']['time_stamp']
+        else:
+            self.burr_chg_sz = None
+            self.burr_chg_ts = None
 
         
