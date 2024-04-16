@@ -49,8 +49,8 @@ class StrokeMetricsVisualizer:
             filter_mask = self.remove_outliers(metric)
             filtered_dict[title] = metric[filter_mask]
             filtered_bucket_assgn[title] = bucket_dict['bucket_assignments'][filter_mask]
-            if bucket_dict['bucket_assignments'][filter_mask].size == 0:
-                raise ValueError(f"No data left after outlier removal for metric {title}.")
+            # if bucket_dict['bucket_assignments'][filter_mask].size == 0:
+            #     raise ValueError(f"No data left after outlier removal for metric {title}.")
             
         print(filtered_dict.keys())
         

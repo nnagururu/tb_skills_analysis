@@ -8,6 +8,7 @@ from hdf5_utils import save_dict_to_hdf5, load_dict_from_hdf5
 from pathlib import Path
 from plotting_skills_analysis import StrokeMetricsVisualizer, plot_3d_vx_rmvd
 
+#TODO figure out why there are more voxels removed after last stroke_endtime
 
 # {short_name: [color, "long_name"]}
 anatomy_dict = {
@@ -185,8 +186,15 @@ class StrokeMetrics:
         stroke_forces = 0
         
         forces = forces[:,:3] # excluding torques
-        forces_ts = forces_ts[:forces.shape[0]]  # because of mismatch in shapes
+        forces_ts = forces_ts[:forces.shape[0]]
 
+        # if forces_ts[0] > 5:
+        #     print('Forces_ts recorded properly')
+        #     forces_ts = forces_ts[:forces.shape[0]] # subset because of mismatch in shapes
+        # else:
+        #     print('Forces_ts recorded improperly, correcting...')
+        #     forces_ts = forces_ts[:forces.shape[0]] * 1e9 # because of recording error
+        
         for i in range(len(stroke_endtimes) - 1):
             stroke_mask = [f_ts >= stroke_endtimes[i] and f_ts < 
                            stroke_endtimes[i+1] for f_ts in forces_ts]
@@ -427,25 +435,18 @@ class StrokeMetrics:
 
         return avg_angle_wrt_camera
 
-    def voxels_removed(self, stroke_endtimes, v_rm_ts):
+    def voxels_removed(self, stroke_endtimes, v_rm_ts, v_rm_locs):
         #TODO
-        cum_vxl_rm_stroke_end = self.gen_cum_vxl_rm_stroke_end(stroke_endtimes, v_rm_ts)
+        cum_vxl_rm_stroke_end = self.gen_cum_vxl_rm_stroke_end(stroke_endtimes, v_rm_ts, v_rm_locs)
         vxls_removed = np.diff(cum_vxl_rm_stroke_end, prepend=0)
 
         return vxls_removed
 
-    def gen_cum_vxl_rm_stroke_end(self, stroke_endtimes, v_rm_ts):
-        #TODO
-        cum_vxl_rm_stroke_end = []
-        stroke_ind = 1 # starting from 1 bc stroke_endtimes[0] is min(v_rm_ts) not necessarily a stroke_end
+    def gen_cum_vxl_rm_stroke_end(self, stroke_endtimes, v_rm_ts, v_rm_locs):
+        stroke_endtimes = stroke_endtimes[1:] # remove first timestamp which is min(v_rm_ts) and not needed
+        closest_vxl_rm_ts_to_stroke_end = np.searchsorted(v_rm_ts, stroke_endtimes)
+        cum_vxl_rm_stroke_end = np.searchsorted(v_rm_locs[:,0], closest_vxl_rm_ts_to_stroke_end, side='right') -1 
         
-        for i in range(len(v_rm_ts)): 
-            if v_rm_ts[i] > stroke_endtimes[stroke_ind]:
-                cum_vxl_rm_stroke_end.append(i)
-                stroke_ind += 1
-                if stroke_ind >= len(stroke_endtimes):
-                    break
-
         return np.array(cum_vxl_rm_stroke_end)
     
     def calc_metrics (self):
@@ -453,7 +454,7 @@ class StrokeMetrics:
         velocity, acceleration, jerk = self.extract_kinematics(self.exp.d_poses, self.exp.data_ts, self.stroke_ends, self.data_vrm_mask)
         curvature = self.extract_curvature(self.exp.d_poses, self.exp.data_ts, self.stroke_ends, self.data_vrm_mask)
         orientation_wrt_camera = self.orientation_wrt_camera(self.stroke_ends, self.stroke_endtimes, self.exp.d_poses, self.exp.cam_poses, self.exp.data_ts, self.data_vrm_mask)
-        voxels_removed = self.voxels_removed(self.stroke_endtimes, self.exp.v_rm_ts)
+        voxels_removed = self.voxels_removed(self.stroke_endtimes, self.exp.v_rm_ts, self.exp.v_rm_locs)
 
         force = self.stroke_force(self.exp.forces, self.exp.forces_ts, self.stroke_endtimes)
         contact_angle = self.contact_orientation(self.stroke_endtimes, self.exp.d_poses, self.exp.data_ts, self.data_vrm_mask, self.exp.forces, self.exp.forces_ts)
@@ -471,7 +472,7 @@ class StrokeMetrics:
         num_buckets = self.num_buckets
 
         # Generate cumulative voxels removed at stroke ends
-        cum_vxl_rm_stroke_end = self.gen_cum_vxl_rm_stroke_end(self.stroke_endtimes, self.exp.v_rm_ts)
+        cum_vxl_rm_stroke_end = self.gen_cum_vxl_rm_stroke_end(self.stroke_endtimes, self.exp.v_rm_ts, self.exp.v_rm_locs)
         total_voxels = cum_vxl_rm_stroke_end[-1]
         
         # Determine the range of each bucket
@@ -555,7 +556,7 @@ class GenMetrics:
     def burr_change_dict(self, threshold = 0.8):
         # returns dictionary with burr size, and percent time spent in each burr size
         #TODO change to percent voxel removed in each burr size
-        if self.exp.burr_chg_sz == None:
+        if self.exp.burr_chg_sz is None:
             burr_chg_dict = {'6 mm': 1.0}
             return burr_chg_dict
 
@@ -565,7 +566,7 @@ class GenMetrics:
         burr_chg_sz = np.insert(burr_chg_sz, 0, 6) # 6 is starting burr size
         burr_chg_ts = np.append(burr_chg_ts, self.stroke_endtimes[-1]) # changing time stamps to represent the time at which the burr size changes from corresponding size (not to) 
 
-       
+    
         # calculate differences between consecutive changes
         diffs = np.diff(burr_chg_ts)
         diffs = np.append(diffs, True) # keep last change
@@ -585,14 +586,14 @@ class GenMetrics:
         
         return dict(burr_chg_dict)
     
-    def calc_gen_metrics(self):
+    def calc_metrics(self):
         procedure_time = self.procedure_time()
         num_strokes = self.num_strokes()
         metadata = self.metadata_dict()
-        vxl_rmvd = self.voxel_rmvd_dict()
-        burr_change = self.burr_change_dict()
+        vxl_rmvd_dict = self.voxel_rmvd_dict()
+        burr_chg_dict = self.burr_change_dict()
 
-        self.gen_metrics_dict = {'procedure_time': procedure_time, 'num_strokes': num_strokes, 'metadata': metadata, 'voxels_removed': vxl_rmvd, 'burr_change': burr_change}
+        self.gen_metrics_dict = {'procedure_time': procedure_time, 'num_strokes': num_strokes, 'metadata': metadata, 'vxl_rmvd_dict': vxl_rmvd_dict, 'burr_chg_dict': burr_chg_dict}
 
         return self.gen_metrics_dict
     
@@ -601,31 +602,27 @@ class GenMetrics:
         
 
 
-
-    
-
 def main():
-    exp_csv = pd.read_csv('/Users/nimeshnagururu/Documents/tb_skills_analysis/data/SDF_UserStudy_Data/exp_dirs.csv')
+    exp_csv = pd.read_csv('/Users/nimeshnagururu/Documents/tb_skills_analysis/data/SDF_UserStudy_Data/exp_dirs_DONOTOVERWRITE.csv')
     exps = exp_csv['exp_dir']
 
     # for i in range(len(exps)):
-    # novice_exp = ExpReader('/Users/nimeshnagururu/Documents/tb_skills_analysis/data/unit_test_data/multiple_strokes_w_contact', verbose = True)
-    novice_exp = ExpReader(exps[92], verbose = True)
-    v_rm_ts = np.array(novice_exp.v_rm_ts)
+    novice_exp = ExpReader('/Users/nimeshnagururu/Documents/tb_skills_analysis/data/SDF_UserStudy_Data/Participant_8/2023-02-08 10:45:02_anatM_baseline_P8T5', verbose = True)
+    # novice_exp = ExpReader(exps[49], verbose = True)
     
     novice_stroke_extr = StrokeExtractor(novice_exp)
     novice_stroke_metr = StrokeMetrics(novice_stroke_extr)
-    
+
+    # novice_stroke_metr.gen_cum_vxl_rm_stroke_end(novice_stroke_metr.stroke_endtimes, novice_stroke_metr.exp.v_rm_ts, novice_stroke_metr.exp.v_rm_locs)
     novice_metrics_dict = novice_stroke_metr.calc_metrics()
     novice_bucket_dict = novice_stroke_metr.assign_strokes_to_voxel_buckets()
+
     
-    # visualizer = StrokeMetricsVisualizer(novice_metrics_dict, novice_bucket_dict, novice_metrics_dict, novice_bucket_dict, plot_previous_bucket=True)
-    # visualizer.interactive_plot_buckets() 
+    visualizer = StrokeMetricsVisualizer(novice_metrics_dict, novice_bucket_dict, novice_metrics_dict, novice_bucket_dict, plot_previous_bucket=True)
+    visualizer.interactive_plot_buckets() 
 
-    novice_gen_metr = GenMetrics(novice_stroke_extr, exps[46])
-    novice_gen_metr.calc_gen_metrics()
-
-    plot_3d_vx_rmvd(novice_exp)
+    # novice_gen_metr = GenMetrics(novice_stroke_extr, exps[46])
+    # plot_3d_vx_rmvd(novice_exp)
     
 
     # att_exp = exp_reader(exps[46], verbose = True)

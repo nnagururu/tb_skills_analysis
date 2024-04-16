@@ -38,8 +38,9 @@ def exp_dirs_to_csv(exp_dirs):
         participant.append(PT_match.group(1))
         trial.append(PT_match.group(2))
 
-        pupil_path = exp_dir / '000/eye0.mp4'
-        if pupil_path.exists(): 
+        pupil_path0 = exp_dir / '000/eye0.mp4'
+        pupil_path1 = exp_dir / '000/eye1.mp4'
+        if pupil_path0.exists() and pupil_path1.exists(): 
             pupil_data.append(1)
         else:
             pupil_data.append(0)

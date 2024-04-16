@@ -48,6 +48,42 @@ class ExpReader:
                     self._data[grp] = OrderedDict()
                 if verbose:
                     print("\t Processing Group ", grp)
+                
+                # Handling voxels removed independently because index recorded in voxel_color
+                # is reset with each hdf5 file
+                if grp == "voxels_removed":
+                    if 'voxel_time_stamp' not in file[grp].keys() or len(file[grp]['voxel_time_stamp']) == 0:
+                            continue
+                    print("\t\t Processing Dataset ", 'voxel_time_stamp')
+                    print("\t\t Processing Dataset ", 'voxel_color')
+                    print("\t\t Processing Dataset ", 'voxel_removed')
+
+
+                    if 'voxel_time_stamp' not in self._data[grp]:
+                        self._data[grp]['voxel_time_stamp'] = file[grp]['voxel_time_stamp'][()]
+                        self._data[grp]['voxel_color'] = file[grp]['voxel_color'][()]
+                        self._data[grp]['voxel_removed'] = file[grp]['voxel_removed'][()]
+
+                    else:
+                        max_ts_index = len(self._data[grp]['voxel_time_stamp'])
+                        curr_vox_color = file[grp]['voxel_color'][()]
+                        curr_vox_removed = file[grp]['voxel_removed'][()]
+                        curr_vox_color[:,0] += max_ts_index
+                        curr_vox_removed[:,0] += max_ts_index
+                        
+                        print("\t\t Processing Dataset ", dset)
+                        self._data[grp]['voxel_color'] = np.append(
+                            self._data[grp]['voxel_color'], curr_vox_color, axis = 0
+                        )
+                        self._data[grp]['voxel_removed'] = np.append(
+                            self._data[grp]['voxel_removed'], curr_vox_removed, axis = 0
+                        )
+                        self._data[grp]['voxel_time_stamp'] = np.append(
+                            self._data[grp]['voxel_time_stamp'], file[grp]['voxel_time_stamp'][()]
+                        )
+                    continue
+
+
                 for dset in file[grp].keys():
                     # print(dset)
                     if grp == "data" and (dset in self.ignore_keys):
@@ -58,6 +94,7 @@ class ExpReader:
 
                     if verbose:
                         print("\t\t Processing Dataset ", dset)
+
                     if dset not in self._data[grp]:
                         self._data[grp][dset] = file[grp][dset][()]
                     else:
