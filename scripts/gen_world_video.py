@@ -4,7 +4,7 @@ from collections import OrderedDict
 from natsort import natsorted
 import numpy as np
 import pandas as pd
-from exp_reader import exp_reader 
+from exp_reader import ExpReader 
 import cv2
 import os
 
@@ -16,7 +16,7 @@ def gen_video(exp_dir):
         output_vid_f = exp_dir / 'world.mp4'
         output_timestamps_f = exp_dir / 'world_timestamps.npy'
     
-    reader = exp_reader(exp_dir, verbose = True)
+    reader = ExpReader(exp_dir, verbose = True, ignore_keys = ['depth', 'r_img', 'segm'])
     od = reader._data
 
     world_timestamps = od['data']['time']
@@ -52,21 +52,23 @@ def gen_video(exp_dir):
 
 
 def main():
-    parser = ArgumentParser()
-    parser.add_argument("--exp_csv", 
-                            action="store", 
-                            dest="exp_csv", 
-                            help="Specify experiments directory", 
-                            default = '/Users/nimeshnagururu/Documents/tb_skills_analysis/data/SDF_UserStudy_Data/exp_dirs.csv')
+    # parser = ArgumentParser()
+    # parser.add_argument("--exp_csv", 
+    #                         action="store", 
+    #                         dest="exp_csv", 
+    #                         help="Specify experiments directory", 
+    #                         default = '/Users/nimeshnagururu/Documents/tb_skills_analysis/data/SDF_UserStudy_Data/exp_dirs.csv')
     
-    args = parser.parse_args()
-    csv = pd.read_csv(args.exp_csv)
+    # args = parser.parse_args()
+    # csv = pd.read_csv(args.exp_csv)
 
-    exp = list(csv['exp_dir'])
-    for e in exp:
-        e = Path(e)
-        if not (e / '000/world.mp4').exists() and not (e / 'world.mp4').exists():
-            gen_video(Path(e))
+    # exp = list(csv['exp_dir'])
+    # for e in exp:
+    #     e = Path(e)
+    #     if not (e / '000/world.mp4').exists() and not (e / 'world.mp4').exists():
+    #         gen_video(Path(e))
+    
+    gen_video(Path('/Users/nimeshnagururu/Documents/tb_skills_analysis/data/SDF_UserStudy_Data/Participant_9/2023-02-10 09:45:37_anatE_haptic_P9T5'))
     
 
 

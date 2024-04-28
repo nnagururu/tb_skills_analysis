@@ -54,16 +54,16 @@ class ExpReader:
                 if grp == "voxels_removed":
                     if 'voxel_time_stamp' not in file[grp].keys() or len(file[grp]['voxel_time_stamp']) == 0:
                             continue
-                    print("\t\t Processing Dataset ", 'voxel_time_stamp')
-                    print("\t\t Processing Dataset ", 'voxel_color')
-                    print("\t\t Processing Dataset ", 'voxel_removed')
-
+                    
+                    if verbose:
+                        print("\t\t Processing Dataset ", 'voxel_time_stamp')
+                        print("\t\t Processing Dataset ", 'voxel_color')
+                        print("\t\t Processing Dataset ", 'voxel_removed')
 
                     if 'voxel_time_stamp' not in self._data[grp]:
                         self._data[grp]['voxel_time_stamp'] = file[grp]['voxel_time_stamp'][()]
                         self._data[grp]['voxel_color'] = file[grp]['voxel_color'][()]
                         self._data[grp]['voxel_removed'] = file[grp]['voxel_removed'][()]
-
                     else:
                         max_ts_index = len(self._data[grp]['voxel_time_stamp'])
                         curr_vox_color = file[grp]['voxel_color'][()]
@@ -71,7 +71,6 @@ class ExpReader:
                         curr_vox_color[:,0] += max_ts_index
                         curr_vox_removed[:,0] += max_ts_index
                         
-                        print("\t\t Processing Dataset ", dset)
                         self._data[grp]['voxel_color'] = np.append(
                             self._data[grp]['voxel_color'], curr_vox_color, axis = 0
                         )

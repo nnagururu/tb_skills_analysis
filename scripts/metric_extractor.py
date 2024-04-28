@@ -8,7 +8,6 @@ from hdf5_utils import save_dict_to_hdf5, load_dict_from_hdf5
 from pathlib import Path
 from plotting_skills_analysis import StrokeMetricsVisualizer, plot_3d_vx_rmvd
 
-#TODO figure out why there are more voxels removed after last stroke_endtime
 
 # {short_name: [color, "long_name"]}
 anatomy_dict = {
@@ -171,7 +170,9 @@ class StrokeMetrics:
         self.stroke_ends = stroke_extr.stroke_ends
         self.data_vrm_mask = stroke_extr.data_vrm_mask
         self.stroke_endtimes = self.get_stroke_endtimes(self.stroke_ends, self.data_vrm_mask, self.exp.data_ts)
-        self.num_buckets = num_buckets  
+        self.num_buckets = num_buckets
+
+        self.bucket_dict = self.assign_strokes_to_voxel_buckets()  
 
     def get_stroke_endtimes(self, stroke_ends, data_vrm_mask, data_ts):
         # Adds the first timestamp to the list of stroke end times
@@ -182,6 +183,10 @@ class StrokeMetrics:
         return stroke_endtimes       
 
     def stroke_force(self, forces, forces_ts, stroke_endtimes):
+        # Note that force calculation doesnt work for some SDF Users Study Recordings, because 
+        # timestamps were recorded improperly. This is why we're getting the mean of an empty slice
+        # numpy errors.
+
         avg_stroke_force = []
         stroke_forces = 0
         
@@ -203,9 +208,12 @@ class StrokeMetrics:
                 
         return np.array(avg_stroke_force)
     
-    def stroke_length(self, stroke_ends, d_poses):
-        # note that this path length not euclidean legnth
+    def stroke_length(self, stroke_ends, d_poses, data_vrm_mask):
+        # Figure out why we're getting some strokes with 0 length
+
+        # note that this path length not euclidean length
         d_pos = d_poses[:, :3]
+        d_pos = d_pos[data_vrm_mask]
 
         lens = []
         inds = np.insert(np.where(stroke_ends == 1), 0, 0)
@@ -436,7 +444,6 @@ class StrokeMetrics:
         return avg_angle_wrt_camera
 
     def voxels_removed(self, stroke_endtimes, v_rm_ts, v_rm_locs):
-        #TODO
         cum_vxl_rm_stroke_end = self.gen_cum_vxl_rm_stroke_end(stroke_endtimes, v_rm_ts, v_rm_locs)
         vxls_removed = np.diff(cum_vxl_rm_stroke_end, prepend=0)
 
@@ -450,7 +457,7 @@ class StrokeMetrics:
         return np.array(cum_vxl_rm_stroke_end)
     
     def calc_metrics (self):
-        length = self.stroke_length(self.stroke_ends, self.exp.d_poses)
+        length = self.stroke_length(self.stroke_ends, self.exp.d_poses, self.data_vrm_mask)
         velocity, acceleration, jerk = self.extract_kinematics(self.exp.d_poses, self.exp.data_ts, self.stroke_ends, self.data_vrm_mask)
         curvature = self.extract_curvature(self.exp.d_poses, self.exp.data_ts, self.stroke_ends, self.data_vrm_mask)
         orientation_wrt_camera = self.orientation_wrt_camera(self.stroke_ends, self.stroke_endtimes, self.exp.d_poses, self.exp.cam_poses, self.exp.data_ts, self.data_vrm_mask)
@@ -486,6 +493,7 @@ class StrokeMetrics:
             # Find the bucket index; max is to handle the last bucket edge case
             bucket_index = min(int(voxel_count / bucket_size), num_buckets - 1)
             bucket_assignments[i] = bucket_index
+
 
         bucket_dict = {'bucket_assignments': bucket_assignments, 'bucket_ranges': bucket_ranges}  
         
@@ -607,19 +615,21 @@ def main():
     exps = exp_csv['exp_dir']
 
     # for i in range(len(exps)):
-    novice_exp = ExpReader('/Users/nimeshnagururu/Documents/tb_skills_analysis/data/SDF_UserStudy_Data/Participant_8/2023-02-08 10:45:02_anatM_baseline_P8T5', verbose = True)
-    # novice_exp = ExpReader(exps[49], verbose = True)
-    
+    novice_exp = ExpReader(exps[46], verbose = True)  
     novice_stroke_extr = StrokeExtractor(novice_exp)
-    novice_stroke_metr = StrokeMetrics(novice_stroke_extr)
-
-    # novice_stroke_metr.gen_cum_vxl_rm_stroke_end(novice_stroke_metr.stroke_endtimes, novice_stroke_metr.exp.v_rm_ts, novice_stroke_metr.exp.v_rm_locs)
+    novice_stroke_metr = StrokeMetrics(novice_stroke_extr, num_buckets = 5)
     novice_metrics_dict = novice_stroke_metr.calc_metrics()
     novice_bucket_dict = novice_stroke_metr.assign_strokes_to_voxel_buckets()
 
+    # att_exp  = ExpReader(exps[93], verbose = True)
+    # att_stroke_extr = StrokeExtractor(att_exp)
+    # att_stroke_metr = StrokeMetrics(att_stroke_extr, num_buckets = 5)
+    # att_metrics_dict = att_stroke_metr.calc_metrics()
+    # att_bucket_dict = att_stroke_metr.assign_strokes_to_voxel_buckets()
+
     
-    visualizer = StrokeMetricsVisualizer(novice_metrics_dict, novice_bucket_dict, novice_metrics_dict, novice_bucket_dict, plot_previous_bucket=True)
-    visualizer.interactive_plot_buckets() 
+    # visualizer = StrokeMetricsVisualizer(novice_metrics_dict, novice_bucket_dict, att_metrics_dict, att_bucket_dict, plot_previous_bucket=False)
+    # visualizer.interactive_plot_buckets() 
 
     # novice_gen_metr = GenMetrics(novice_stroke_extr, exps[46])
     # plot_3d_vx_rmvd(novice_exp)
