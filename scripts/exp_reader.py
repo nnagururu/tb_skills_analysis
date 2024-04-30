@@ -1,3 +1,14 @@
+"""
+exp_reader.py
+
+Reads all hdf5 files within a directory and concatenates groups. Groups
+are stored as class attributes for easy access
+
+Authors: Adnan Munawar and Juan Barragan (initial), Nimesh Nagururu (editor)
+"""
+
+
+
 from pathlib import Path
 from collections import OrderedDict
 from natsort import natsorted
@@ -7,24 +18,43 @@ import pandas as pd
 
 class ExpReader:
     def __init__(self, recording_path, ignore_keys = ['depth', 'r_img', 'l_img', 'segm'], verbose = False):
+        """
+        Initialize the ExpReader class.
+
+        Args:
+            recording_path (str): Path to the directory containing HDF5 files.
+            ignore_keys (list, optional): List of keys to ignore while reading HDF5 files. Defaults 
+                to ['depth', 'r_img', 'l_img', 'segm'] as these require the most processing
+            verbose (bool, optional): If True, prints verbose output. Defaults to False.
+        """
         self.recording_path = Path(recording_path)
         self.hdf5_files = []
         self._data = OrderedDict()
         self.ignore_keys = ignore_keys
 
         self._get_merged_data(verbose = verbose)
-        self.extract_from_data()
+        self._extract_from_data()
 
     def _clear_data(self):
+        """
+        Clears the data stored in the instance, as sanity check.
+        """
         for g in self._data.keys():
             self._data[g].clear()
 
         self.hdf5_files = []
     
     def _get_merged_data(self, verbose):
+        """
+        Obtains merged data from HDF5 files.
+
+        Args:
+            verbose (bool): If True, prints verbose output.
+        """
         self._clear_data()
         print(self.recording_path)
         
+        # HDF5 files are named according to time of recordings, so sorting files here by name
         self.hdf5_files = list(self.recording_path.glob('*.hdf5'))
         self.hdf5_files = natsorted(self.hdf5_files)
         print("Number of Files ", len(self.hdf5_files))
@@ -84,7 +114,6 @@ class ExpReader:
 
 
                 for dset in file[grp].keys():
-                    # print(dset)
                     if grp == "data" and (dset in self.ignore_keys):
                         continue
 
@@ -102,7 +131,12 @@ class ExpReader:
                         )
             file.close()
     
-    def extract_from_data(self):
+    def _extract_from_data(self):
+        """
+        Extracts data from the merged dataset.
+
+        Note: attributes aren't comprehensive, need to add more instantiation as needed
+        """
         self.cam_poses = self._data['data']['pose_main_camera']
         self.vol_poses = self._data['data']['pose_mastoidectomy_volume']
         self.d_poses = self._data['data']['pose_mastoidectomy_drill']

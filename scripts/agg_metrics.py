@@ -1,3 +1,15 @@
+"""
+agg_metrics.py
+
+This script is used to aggregate both general and stroke metrics over experiments and requires 
+a CSV file containing experiment directories. Recall that the stroke metric extractor produces a 
+dictionary of metrics for each stroke in an experiment. This script averages stroke metrics over 
+stroke to produce averages for each metric. General metrics are basically copied and formatted from
+the dictionary produces by the gen_metric extractor. Output is saved as a CSV file.
+
+Author: Nimesh Nagururu
+"""
+
 import pandas as pd
 import numpy as np
 from pathlib import Path
@@ -5,6 +17,17 @@ from exp_reader import ExpReader
 from metric_extractor import StrokeMetrics, StrokeExtractor, GenMetrics
 
 def run_agg_metrics(df, output_dir, num_buckets):
+    """
+    This function aggregates metrics from a given DataFrame.
+
+    Parameters:
+    df (DataFrame): The DataFrame containing the experiment data.
+    output_dir (str): The directory where the output will be stored.
+    num_buckets (int): The number of buckets/phaess to divide the data into. 
+
+    Returns:
+    None
+    """
     gen_dict_names = ['exp_dir','Procedure Duration (s)', 'Bone Voxels Removed', 'Non-Bone Voxels Removed', '%Time with 6mm Burr (%)', '%Time with 4mm Burr (%)',
                       'Number of Strokes']
     stroke_dict_names = ['exp_dir', 'Number of Strokes in Bucket', 'Avg Voxels Removed per Stroke', 'Avg Stroke Length (m)', 'Avg Stroke Velocity (m/s)', 
@@ -38,12 +61,15 @@ def run_agg_metrics(df, output_dir, num_buckets):
     for i, exp_dir in enumerate(df['exp_dir']):
         exp = ExpReader(exp_dir)
         stroke_extr = StrokeExtractor(exp)
+        # Note that num_buckets is a Stroke Metrics parameter as it produces bucket assignments
+        # currently those assignments are from phase of surgery dictated by percent of voxels remvoed
         stroke_metr = StrokeMetrics(stroke_extr, num_buckets = num_buckets)
         stroke_metr_dict = stroke_metr.calc_metrics()
         gen_metr = GenMetrics(stroke_extr, exp_dir)
         gen_metr_dict = gen_metr.calc_metrics()
 
         print("Processing " + Path(exp_dir).name)
+        # Iterate throough buckets first to calcuate metrics within buckets
         for i in range(num_buckets):
             agg_stroke_dict['bucket_' + str(i)]['exp_dir'].append(exp_dir)
             
@@ -82,16 +108,6 @@ def run_agg_metrics(df, output_dir, num_buckets):
             four_mm_burr_time = 0
         agg_gen_dict['4mm_burr_time'].append(four_mm_burr_time)
 
-    
-    # print(agg_gen_dict)
-    # print(agg_stroke_dict)
-
-    # agg_dict = {**agg_gen_dict, **agg_stroke_dict}
-    # agg_df = pd.DataFrame(agg_dict)
-    # agg_df.columns = agg_dict_names
-    
-    # comb = pd.merge(df, agg_df, on='exp_dir', how='inner')
-    # comb.to_csv(output_f, index=False)
 
     agg_gen_df = pd.DataFrame(agg_gen_dict)
     agg_gen_df.columns = gen_dict_names
@@ -112,6 +128,7 @@ def run_agg_metrics(df, output_dir, num_buckets):
 def main():
     output_dir = '../output_SDF'
     exp_csv = "/Users/nimeshnagururu/Documents/tb_skills_analysis/data/SDF_UserStudy_Data/exp_dirs_DONOTOVERWRITE.csv"
+    # num_buckets of 1 means that the data is not divided into buckets, and overall metrics are visible
     num_buckets = 1
     df = pd.read_csv(exp_csv)
     df['expert'] = np.where(df['level_training'] >= 11, 1, 0)
@@ -121,7 +138,5 @@ def main():
 
 
     
-
-
 if __name__ == "__main__":
     main()

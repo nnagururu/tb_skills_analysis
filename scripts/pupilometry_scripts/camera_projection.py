@@ -1,3 +1,8 @@
+############################################################################################################
+# OpenGL projection matrix from aspect ratio, field of view, near and far clipping planes
+# Copied from Hongchao's digital twins code: https://github.com/Soooooda69/volumetric_drilling/blob/2d938df22b20d69efa8219e466b48ec7d381112a/scripts/camera_projection.py
+############################################################################################################
+
 import math
 from argparse import ArgumentParser
 import numpy as np

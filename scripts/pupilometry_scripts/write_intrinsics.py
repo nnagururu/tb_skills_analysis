@@ -1,3 +1,9 @@
+################################################################################
+# Writes a world intrinsics file in the Pupil Labs format 
+# Note that this script is nto necessary for gaze estimation
+# Still unsure what exactly the intrinsics file is used for
+################################################################################
+
 from pathlib import Path
 import pprint
 import msgpack
@@ -29,5 +35,6 @@ intrinsics = {
     'version': 1
 }
 
+# msgpack is the file format for intrinsics
 msgpack_file = Path("../world.intrinsics")
 msgpack_file.write_bytes(msgpack.packb(intrinsics))

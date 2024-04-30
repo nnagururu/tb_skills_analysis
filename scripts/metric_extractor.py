@@ -30,7 +30,36 @@ anatomy_dict = {
 }
 
 class StrokeExtractor:
+    """
+    A class to extract stroke segmentation from an experiment
+
+    Attributes:
+    -----------
+        exp : ExpReader object
+            Created as synthesis of hdf5 files
+        stroke_ends : np.ndarray
+            1,0 array indicating the end points of strokes. Length of array is equal to data[data_vrm_mask]
+        data_vrm_mask : np.ndarray
+            Boolean mask for filtering [data] group data, to only drilling data
+
+    Methods:
+    -----------
+        _find_drilling_seq(v_rm_ts, threshold=0.2):
+            Find sequences of time points where each consecutive pair is less than `threshold` seconds.
+        _filter_pose_ts_within_periods(data_ts, v_rm_ts):
+            Filters and retains time points that fall within any of the specified time periods.
+        _get_strokes(d_poses, data_ts, data_vrm_mask, k=3):
+            Returns a list of 1's and 0's indicating whether a stroke has ended at the timestamp at its index and the timestamps.
+
+    """
     def __init__(self, exp):
+        """
+        Initializes the StrokeExtractor class.
+
+            Parameters:
+                - exp (ExpReader): An ExpReader object which gives us the experiment data.
+
+        """
         self.exp = exp
 
         self.data_vrm_mask  = self._filter_pose_ts_within_periods(self.exp.data_ts, self.exp.v_rm_ts)
@@ -38,7 +67,9 @@ class StrokeExtractor:
         
     def _find_drilling_seq(self, v_rm_ts, threshold=0.2):
         """
-        Find sequences of time points where each consecutive pair is less than `threshold` seconds
+        Find sequences of time points where each consecutive pair is less than `threshold` seconds. This is
+        generally to find periods of drilling in the data, as we're finding sequences in the voxels removed
+        dataset
 
         Parameters:
         - time_points: A sorted NumPy array of time points.
@@ -65,7 +96,8 @@ class StrokeExtractor:
 
     def _filter_pose_ts_within_periods(self, data_ts, v_rm_ts):
         """
-        Filters and retains time points that fall within any of the specified time periods.
+        Filters and retains time points that fall within any of the specified time periods. Goal is to filter
+        out drill pose data points within drilling periods
 
         Parameters:
         - time_points: A numpy array of time points.
@@ -165,7 +197,61 @@ class StrokeExtractor:
         return stroke_ends
 
 class StrokeMetrics:
-    def __init__(self, stroke_extr, num_buckets=10):
+    """
+    A class to calculate various metrics related to strokes performed during a surgical procedure.
+
+    Attributes:
+    -----------
+        exp : ExpReader object
+            Created as synthesis o hdf5 files
+        stroke_ends : np.ndarray
+            1,0 array indicating the end points of strokes. Length of array is equal to data[data_vrm_mask]
+        data_vrm_mask : np.ndarray
+            Boolean mask for filtering drill pose data, to only drilling data
+        stroke_endtimes : np.ndarray
+            Array of timestamps representing when each stroke ends. Note that, the first timestamp
+            is the minimum timestamp in drilling periods
+        num_buckets : int
+            Number of voxel buckets to categorize the strokes.
+        bucket_dict : dict
+            Dictionary assigning each stroke to a voxel bucket and defining bucket ranges.
+
+    Methods:
+    --------
+        get_stroke_endtimes(stroke_ends, data_vrm_mask, data_ts):
+            Returns an array of timestamps representing the end times of strokes.
+        stroke_force(forces, forces_ts, stroke_endtimes):
+            Computes the average force applied during each stroke.
+        stroke_length(stroke_ends, d_poses, data_vrm_mask):
+            Computes the length of each stroke.
+        extract_kinematics(d_poses, data_ts, stroke_ends, data_vrm_mask):
+            Extracts kinematic metrics (velocity, acceleration, jerk) for each stroke.
+        extract_curvature(d_poses, data_ts, stroke_ends, data_vrm_mask):
+            Calculates the curvature of each stroke.
+        contact_orientation(stroke_endtimes, d_poses, data_ts, data_vrm_mask, forces, forces_ts):
+            Computes the contact angle between the force and drill orientation for each stroke.
+        orientation_wrt_camera(stroke_ends, stroke_endtimes, d_poses, cam_poses, data_ts, data_vrm_mask):
+            Computes the average angle between the drill and camera for each stroke.
+        voxels_removed(stroke_endtimes, v_rm_ts, v_rm_locs):
+            Returns the number of voxels removed per stroke.
+        gen_cum_vxl_rm_stroke_end(stroke_endtimes, v_rm_ts, v_rm_locs):
+            Returns cumulative voxels removed at each stroke end time.
+        calc_metrics():
+            Computes function to actually calculate strokes using above methods
+        assign_strokes_to_voxel_buckets():
+            Assigns strokes to voxel buckets based on cumulative voxels removed.
+        save_stroke_metrics_and_buckets(output_path):
+            Saves the stroke metrics and voxel bucket assignments to HDF5 files.
+        """
+    
+    def __init__(self, stroke_extr, num_buckets=5):
+        """
+        Initializes the StrokeMetrics class.
+
+            Parameters:
+                stroke_extr (object): An StrokeExtr object which gives us stroke segmentationa nd more
+                num_buckets (int): The number of voxel buckets to categorize the strokes (default is 10).
+        """
         self.exp = stroke_extr.exp
         self.stroke_ends = stroke_extr.stroke_ends
         self.data_vrm_mask = stroke_extr.data_vrm_mask
@@ -175,7 +261,20 @@ class StrokeMetrics:
         self.bucket_dict = self.assign_strokes_to_voxel_buckets()  
 
     def get_stroke_endtimes(self, stroke_ends, data_vrm_mask, data_ts):
-        # Adds the first timestamp to the list of stroke end times
+        """
+        Returns an array of timestamps representing the end times of strokes. Note that the first timestamp
+        is the minimum timestamp in drilling periods.
+
+            Parameters:
+                stroke_ends (np.ndarray):  1,0 array indicating the end points of strokes. Length of array is equal to 
+                    length of data[data_vrm_mask]
+                data_vrm_mask (np.ndarray): Boolean mask for filtering drill pose data to only poses during drilling.
+                data_ts (np.ndarray): Time stamps of all drill poses.
+
+            Returns:
+                stroke_endtimes (np.ndarray): Array of timestamps representing the end times of strokes, plus
+                    first timestamp as the minimum timestamp in drilling periods.
+        """        
         data_ts_vrm = data_ts[data_vrm_mask]
         stroke_endtimes = data_ts_vrm[stroke_ends.astype(bool)]
         stroke_endtimes = np.insert(stroke_endtimes, 0, min(data_ts_vrm))
@@ -183,33 +282,52 @@ class StrokeMetrics:
         return stroke_endtimes       
 
     def stroke_force(self, forces, forces_ts, stroke_endtimes):
-        # Note that force calculation doesnt work for some SDF Users Study Recordings, because 
-        # timestamps were recorded improperly. This is why we're getting the mean of an empty slice
-        # numpy errors.
+        """
+        Computes the average force applied during each stroke.
 
+        Note that force calculation doesnt work for some SDF Users Study Recordings, because 
+        timestamps were recorded improperly. This is why we're getting the mean of an empty slice
+        numpy errors.
+
+            Parameters:
+                forces (np.ndarray): Array of forces applied during the procedure. Sampled at higher
+                    frequency than drill poses
+                forces_ts (np.ndarray): Array of timestamps corresponding to each force.
+                stroke_endtimes (np.ndarray): Array of timestamps representing the end times of strokes.
+
+            Returns:
+                avg_stroke_force (np.ndarray): Array of average forces applied during each stroke. Length
+                    of array is equal to the number of strokes.
+        """
+        
         avg_stroke_force = []
         stroke_forces = 0
         
         forces = forces[:,:3] # excluding torques
-        forces_ts = forces_ts[:forces.shape[0]]
+        forces_ts = forces_ts[:forces.shape[0]] # Avoids mutex error, where extra timestamps are recorded
 
-        # if forces_ts[0] > 5:
-        #     print('Forces_ts recorded properly')
-        #     forces_ts = forces_ts[:forces.shape[0]] # subset because of mismatch in shapes
-        # else:
-        #     print('Forces_ts recorded improperly, correcting...')
-        #     forces_ts = forces_ts[:forces.shape[0]] * 1e9 # because of recording error
         
         for i in range(len(stroke_endtimes) - 1):
             stroke_mask = [f_ts >= stroke_endtimes[i] and f_ts < 
                            stroke_endtimes[i+1] for f_ts in forces_ts]
-            stroke_forces = np.linalg.norm(forces[stroke_mask], axis=1)
+            stroke_forces = np.linalg.norm(forces[stroke_mask], axis=1) # Only considering magnitudes of forces here
             avg_stroke_force.append(np.mean(stroke_forces))
                 
         return np.array(avg_stroke_force)
     
     def stroke_length(self, stroke_ends, d_poses, data_vrm_mask):
-        # Figure out why we're getting some strokes with 0 length
+        """
+        Computes the path length of each stroke.
+
+            Parameters:
+                stroke_ends (np.ndarray): 1,0 array indicating the end points of strokes. Length of array is equal to 
+                    length of data[data_vrm_mask]
+                d_poses (np.ndarray): Array of drill poses
+                data_vrm_mask (np.ndarray): Boolean mask for filtering [data] group data to only drilling data
+
+            Returns:
+                lens (np.ndarray): Array of path lengths for each stroke. Length of array is equal to the number of strokes.
+        """
 
         # note that this path length not euclidean length
         d_pos = d_poses[:, :3]
@@ -229,7 +347,23 @@ class StrokeMetrics:
         return np.array(lens)
 
     def extract_kinematics(self, d_poses, data_ts, stroke_ends, data_vrm_mask):
-        
+        """
+        Extracts kinematic metrics (velocity, acceleration, jerk) for each stroke.
+
+            Parameters:
+                d_poses (np.ndarray): Array of drill poses
+                data_ts (np.ndarray): Array of timestamps for each drill pose
+                stroke_ends (np.ndarray): A 1,0 array indicating the end points of strokes. Length of array 
+                    is equal to length of data[data_vrm_mask]
+                data_vrm_mask (np.ndarray): Boolean mask for filtering [data] group data to only drilling data
+
+
+            Returns:
+                stroke_velocities (np.ndarray): Array of velocities for each stroke.
+                stroke_accelerations (np.ndarray): Array of accelerations for each stroke.
+                stroke_jerks (np.ndarray): Array of jerks for each stroke.
+        """
+
         drill_pose = d_poses[data_vrm_mask]
         data_ts = data_ts[data_vrm_mask]
         stroke_indices = np.insert(np.where(stroke_ends == 1)[0] + 1, 0, 0)[:-1]
@@ -307,7 +441,21 @@ class StrokeMetrics:
         return np.array(stroke_velocities), np.array(stroke_accelerations), np.array(stroke_jerks)
 
     def extract_curvature(self, d_poses, data_ts, stroke_ends, data_vrm_mask):
-        
+        """
+        Calculates the curvature of each stroke according to definition by Rao et al. at
+        https://doi.org/10.1023/A:1020350100748
+
+            Parameters:
+                d_poses (np.ndarray): Array of drill poses 
+                data_ts (np.ndarray): Array of timestamps for each drill pose
+                stroke_ends (np.ndarray): A1,0 array indicating the end points of strokes. Length of array 
+                    is equal to length of data[data_vrm_mask]
+                data_vrm_mask (np.ndarray): Boolean mask for filtering [data] group data to only drilling data
+
+            Returns:
+                curvatures (np.ndarray): Array of curvature values for each stroke.
+        """
+
         drill_pose = d_poses[data_vrm_mask]
         data_ts = data_ts[data_vrm_mask]
         stroke_indices = np.insert(np.where(stroke_ends == 1)[0] + 1, 0, 0)[:-1]
@@ -363,11 +511,28 @@ class StrokeMetrics:
 
     def contact_orientation(self, stroke_endtimes, d_poses, data_ts,
                         data_vrm_mask,forces, forces_ts):
+        """
+        Computes the contact angle between the bone normal vector and drill orientation for each stroke. We 
+        use the force vector here to get the bone normal.
+
+            Parameters:
+                stroke_endtimes (np.ndarray): Array of timestamps representing the end times of strokes.
+                d_poses (np.ndarray): Array of drill poses
+                data_ts (np.ndarray): Array of timestamps for each drill pose
+                data_vrm_mask (np.ndarray): Boolean mask for filtering [data] group data to only drilling data
+                forces (np.ndarray): Array of forces applied during the procedure. Sampled at higher
+                    frequency than drill poses
+                forces_ts (np.ndarray): Array of timestamps corresponding to each force.
+            
+            Returns:
+                avg_angles_per_stroke (np.ndarray): Array of average angles between the force and drill orientation
+                    for each stroke.
+        """
 
         d_poses = d_poses[data_vrm_mask]
         data_ts = data_ts[data_vrm_mask]
-        forces = forces[:,:3]
-        forces_ts = forces_ts[:forces.shape[0]]
+        forces = forces[:,:3] # Again excluding torques
+        forces_ts = forces_ts[:forces.shape[0]] # Again avoiding mutex error
                               
         avg_angles_per_stroke = []
 
@@ -380,6 +545,7 @@ class StrokeMetrics:
                 avg_angles_per_stroke.append(np.nan)  # Append NaN for strokes with no data, unlikely tho
                 continue
 
+            # Getting drill poses closest to force timestamps
             closest_indices = np.abs(np.subtract.outer(data_ts, stroke_forces_ts)).argmin(axis=0)
             closest_d_poses = d_poses[closest_indices]
 
@@ -400,12 +566,28 @@ class StrokeMetrics:
 
                 stroke_angles.append(90 - angle)
             
+            # Taking average of angles over each stroke
             avg = np.mean(stroke_angles)
             avg_angles_per_stroke.append(avg)
         
         return np.array(avg_angles_per_stroke)
 
     def orientation_wrt_camera(self, stroke_ends, stroke_endtimes, d_poses, cam_poses, data_ts, data_vrm_mask):
+        """
+        Computes the average angle between the drill and camera for each stroke.
+
+            Parameters:
+                stroke_ends (np.ndarray): A 1,0 array indicating the end points of strokes. Length of array 
+                    is equal to length of data[data_vrm_mask]
+                stroke_endtimes (np.ndarray): Array of timestamps representing the end times of strokes.
+                d_poses (np.ndarray): Array of drill poses
+                cam_poses (np.ndarray): Array of camera poses
+                data_ts (np.ndarray): Array of timestamps for each drill pose
+                data_vrm_mask (np.ndarray): Boolean mask for filtering [data] group data to only drilling data
+
+            Returns:
+                avg_angle_wrt_camera (np.ndarray): Array of average angles between the drill and camera for each stroke.
+        """
         d_poses = d_poses[data_vrm_mask]
         data_ts = data_ts[data_vrm_mask]
         cam_poses = cam_poses[data_vrm_mask]
@@ -443,20 +625,49 @@ class StrokeMetrics:
 
         return avg_angle_wrt_camera
 
-    def voxels_removed(self, stroke_endtimes, v_rm_ts, v_rm_locs):
-        cum_vxl_rm_stroke_end = self.gen_cum_vxl_rm_stroke_end(stroke_endtimes, v_rm_ts, v_rm_locs)
-        vxls_removed = np.diff(cum_vxl_rm_stroke_end, prepend=0)
-
-        return vxls_removed
-
     def gen_cum_vxl_rm_stroke_end(self, stroke_endtimes, v_rm_ts, v_rm_locs):
+        """
+        Generates cumulative voxels removed at each stroke end time. Length of array is equal to the number of strokes.
+
+            Parameters:
+                stroke_endtimes (np.ndarray): Array of timestamps representing the end times of strokes.
+                v_rm_ts (np.ndarray): Array of timestamps for each voxel removed.
+                v_rm_locs (np.ndarray): Array of voxel removed locations.
+            
+            Returns:
+                cum_vxl_rm_stroke_end (np.ndarray): Array of cumulative voxels removed at each stroke end time.
+        """
         stroke_endtimes = stroke_endtimes[1:] # remove first timestamp which is min(v_rm_ts) and not needed
         closest_vxl_rm_ts_to_stroke_end = np.searchsorted(v_rm_ts, stroke_endtimes)
         cum_vxl_rm_stroke_end = np.searchsorted(v_rm_locs[:,0], closest_vxl_rm_ts_to_stroke_end, side='right') -1 
         
         return np.array(cum_vxl_rm_stroke_end)
     
+    def voxels_removed(self, stroke_endtimes, v_rm_ts, v_rm_locs):
+        """
+        Returns the number of voxels removed per stroke.
+
+            Parameters:
+                stroke_endtimes (np.ndarray): Array of timestamps representing the end times of strokes.
+                v_rm_ts (np.ndarray): Array of timestamps for each voxel removed.
+                v_rm_locs (np.ndarray): Array of voxel removed locations.
+            
+            Returns:
+                vxls_removed (np.ndarray): Array of number of voxels removed per stroke.
+        """
+        cum_vxl_rm_stroke_end = self.gen_cum_vxl_rm_stroke_end(stroke_endtimes, v_rm_ts, v_rm_locs)
+        vxls_removed = np.diff(cum_vxl_rm_stroke_end, prepend=0)
+
+        return vxls_removed
+    
     def calc_metrics (self):
+        """
+        Compute function to actually calculate stroke metrics using above methods. All storke metrics 
+        are of equal length, equal to the number of strokes.
+
+            Returns:
+                metrics_dict (dict): Dictionary of all stroke metrics.
+        """
         length = self.stroke_length(self.stroke_ends, self.exp.d_poses, self.data_vrm_mask)
         velocity, acceleration, jerk = self.extract_kinematics(self.exp.d_poses, self.exp.data_ts, self.stroke_ends, self.data_vrm_mask)
         curvature = self.extract_curvature(self.exp.d_poses, self.exp.data_ts, self.stroke_ends, self.data_vrm_mask)
@@ -476,6 +687,15 @@ class StrokeMetrics:
         return metrics_dict
 
     def assign_strokes_to_voxel_buckets(self):
+        """
+        Creates the user specified number of buckets, by dividing the total voxels removed equally amongst all buckets.
+        Then assigns each stroke to a bucket based on the cumulative voxels removed at the end of each stroke.
+
+            Returns:
+                bucket_dict (dict): Dictionary with two keys, 'bucket_assignments' and 'bucket_ranges'. 
+                    'bucket_assignments' is a list of bucket assignments for each stroke. 'bucket_ranges' is a list of tuples
+                    representing the range of each bucket.  
+        """
         num_buckets = self.num_buckets
 
         # Generate cumulative voxels removed at stroke ends
@@ -500,6 +720,9 @@ class StrokeMetrics:
         return bucket_dict
     
     def save_stroke_metrics_and_buckets(output_path, self):
+        """
+        Saves the stroke metrics and voxel bucket dict to HDF5 files.
+        """
         metrics = self.calc_metrics()
         bucket_dict = self.assign_strokes_to_voxel_buckets()
 
@@ -509,7 +732,34 @@ class StrokeMetrics:
         return metrics, bucket_dict
 
 class GenMetrics:
+    """
+    Object to calculate general metrics for each experiment
+
+    Attributes:
+    -----------
+        stroke_extr : StrokeExtr object
+            An object that gives us stroke segmentation and more
+        exp_dir : str
+            The directory of the experiment
+    
+    Methods:
+        procedure_time(): Returns the total time of the procedure as a float
+        num_strokes(): Returns the total number of strokes as an int
+        metadata_dict(): Returns metadata dictionary containing participant name, volume name, assist mode, and trial number.
+        voxel_rmvd_dict(): Returns a dictionary with the number of voxels removed (value) for each anatomy (key).
+        burr_change_dict(threshold = 0.8): Returns dictionary with burr size, and percent time spent in each burr size
+        calc_metrics(): Actually calculates all the gen metrics and returns a dictionary with the procedure time,
+            number of strokes, metadata, voxels removed, and burr changes.
+        save_gen_metrics(output_path): Saves the general metrics to a HDF5 file.
+    """
     def __init__(self, stroke_extr, exp_dir):
+        """
+        Initializes the GenMetrics class.
+
+            Parameters:
+                stroke_extr (object): An StrokeExtr object which gives us stroke segmentation and more
+                exp_dir (str): The directory of the experiment
+        """
         # Not sure if this lazy intiializaiton with a stroke_extr object is good practice
         self.exp = stroke_extr.exp
         self.stroke_ends = stroke_extr.stroke_ends
@@ -517,7 +767,10 @@ class GenMetrics:
         self.exp_dir = exp_dir
     
     def procedure_time(self):
-        # Copy of method from StrokeMetrics, should replace redundnacy
+        """
+        Returns the total time of the procedure as a float
+        """
+        # Copy of method from StrokeMetrics TODO: remove redundancy
         data_ts_vrm = self.exp.data_ts[self.data_vrm_mask]
         stroke_endtimes = data_ts_vrm[self.stroke_ends.astype(bool)]
         stroke_endtimes = np.insert(stroke_endtimes, 0, min(data_ts_vrm))
@@ -526,17 +779,26 @@ class GenMetrics:
         return stroke_endtimes[-1] - stroke_endtimes[0]
     
     def num_strokes(self):
-        # Just a count of strokes removed
+        """
+        Returns the total number of strokes as an int
+        """
+
         return sum(self.stroke_ends)
     
     def metadata_dict(self):
-        # metadata dictionary has participant_name, volume_name, assist_mode, and trial_number
+        """
+        Returns metadata dictionary containing participant name, volume name, assist mode, and trial number.        
+        """
+
         with open(self.exp_dir + '/metadata.json', 'r') as f:
             metadata = f.read()
 
         return metadata
     
     def voxel_rmvd_dict(self):
+        """
+        Returns a dictionary with the number of voxels removed (value) for each anatomy (key).
+        """
         # Returns a dictionary with the number of voxels removed (value) for each anatomy (key)
         vxl_rmvd_dict = defaultdict(int)
         v_rm_colors = np.array(self.exp.v_rm_colors).astype(np.int32)
@@ -562,8 +824,11 @@ class GenMetrics:
         return dict(vxl_rmvd_dict)
     
     def burr_change_dict(self, threshold = 0.8):
-        # returns dictionary with burr size, and percent time spent in each burr size
+        
+        """
+        Returns dictionary with burr size, and percent time spent in each burr size
         #TODO change to percent voxel removed in each burr size
+        """
         if self.exp.burr_chg_sz is None:
             burr_chg_dict = {'6 mm': 1.0}
             return burr_chg_dict
@@ -595,6 +860,10 @@ class GenMetrics:
         return dict(burr_chg_dict)
     
     def calc_metrics(self):
+        """
+        Actually calculates all the gen metrics and returns a dictionary with the procedure time, 
+        number of strokes, metadata, voxels removed, and burr changes.  
+        """
         procedure_time = self.procedure_time()
         num_strokes = self.num_strokes()
         metadata = self.metadata_dict()
@@ -606,6 +875,10 @@ class GenMetrics:
         return self.gen_metrics_dict
     
     def save_gen_metrics(self):
+        """
+        Saves the gen metrics to an HDF5 file. 
+        """
+
         save_dict_to_hdf5(self.gen_metrics_dict, self.exp_dir + '/gen_metrics.hdf5')
         
 

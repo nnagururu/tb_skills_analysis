@@ -1,3 +1,12 @@
+"""
+gen_video.py
+
+This script generates a video file from data stored in a specified experiment directory. 
+It uses an ExpReader object to read the data.
+
+Author: Nimesh Nagururu
+"""
+
 from argparse import ArgumentParser
 from pathlib import Path
 from collections import OrderedDict
@@ -9,6 +18,15 @@ import cv2
 import os
 
 def gen_video(exp_dir):
+    """
+    Generate a video file from data stored in the specified experiment directory.
+
+    Args:
+        exp_dir (Path): Path to the experiment directory. Expects Path object.
+
+    Returns:
+        None
+    """
     if (exp_dir / '000').exists():
         output_vid_f = exp_dir / ('000/' + 'world.mp4')
         output_timestamps_f = exp_dir / ('000/' +'world_timestamps.npy')
@@ -22,6 +40,7 @@ def gen_video(exp_dir):
     world_timestamps = od['data']['time']
     l_imgs = od['data']['l_img']
 
+    # Recording frame rate
     frate = 30
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     video = cv2.VideoWriter(str(output_vid_f), fourcc, frate, (l_imgs[0].shape[1], l_imgs[0].shape[0]))

@@ -1,3 +1,15 @@
+"""
+create_datadir_csv.py
+
+This script is used to find and list all directories containing experiment data files (.hdf5). 
+It was written specifically for the SDF User Study data, which has an experiment specific file 
+naming schema. Writes an exp_dir CSV for later use, specifically when aggregating metrics
+across experiments. 
+
+Author: Nimesh Nagururu
+"""
+
+
 import pandas as pd
 from pathlib import Path
 from argparse import ArgumentParser
@@ -6,7 +18,7 @@ import re
 
 
 
-def find_exp_dirs(exp_folder):
+def find_exp_dirs(exp_folder: str):
     # Defining experiments as those with a .hdf5 file
     exp_dirs = []
 
@@ -38,6 +50,8 @@ def exp_dirs_to_csv(exp_dirs):
         participant.append(PT_match.group(1))
         trial.append(PT_match.group(2))
 
+        # Some experiments didn't have pupil data with either eye0 aor eye1 not existing
+        # so noting that here
         pupil_path0 = exp_dir / '000/eye0.mp4'
         pupil_path1 = exp_dir / '000/eye1.mp4'
         if pupil_path0.exists() and pupil_path1.exists(): 

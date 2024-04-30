@@ -8,9 +8,41 @@ from matplotlib.widgets import Slider
 from mpl_toolkits import mplot3d
 
 class StrokeMetricsVisualizer:
+    """
+    A class to visualize stroke metrics for a given experiment.
+
+    Attributes:
+    ------------
+        - metrics_dict (dict): Dictionary containing the stroke metrics.
+        - bucket_assignments (dict): Dictionary containing the bucket assignments for each metric.
+        - metrics_dict2 (dict): Dictionary containing the stroke metrics for a second experiment.
+        - bucket_assignments2 (dict): Dictionary containing the bucket assignments for each metric for the second experiment.
+        - plot_previous_bucket (bool): If True, plots the previous bucket in addition to the current bucket.
+        - metrics_to_plot (list): List of metrics to plot.
+        - xlabels (dict): Dictionary mapping metrics to their x-axis labels.
+        - titles (dict): Dictionary mapping metrics to their plot titles.
+        - num_buckets (int): The number of buckets in the experiment.
+        - available_metrics_to_plot (list): List of metrics available to plot.
+
+    Methods:
+    ------------
+        - init_filtered_dicts(metrics_dict, bucket_dict, metrics_to_plot): Initializes filtered dictionaries for metrics.
+        - remove_outliers(data, method='std'): Removes outliers from the data using standard deviation or IQR.
+        - precompute_bin_edges(num_bins=15): Precomputes bin edges for histograms.
+        - find_max_frequency_per_metric(bin_edges_dict): Finds the maximum frequency for each metric.
+        - plot_bucket_data(bucket_index, fig, axes, bin_edges_dict, max_freq_per_metric): Plots the data for a given bucket.
+        - _plot_bar(ax, data, bin_edges, bar_width, offset, color, alpha, label): Plots a bar chart for a given metric.
+        - interactive_plot_buckets(num_bins=15): Plots an interactive visualization of the stroke metrics.
+    
+    """
     def __init__(self, metrics_dict, bucket_dict, metrics_dict2=None, bucket_dict2=None, plot_previous_bucket=False, 
                  metrics_to_plot = ['length', 'velocity', 'acceleration', 'vxls_removed',
                                     'curvature', 'force', 'angle_wrt_bone', 'angle_wrt_camera']):
+        """
+        Initializes the StrokeMetricsVisualizer object.
+
+        Parameters: Class attributes as above
+        """
         
         # Subset only common keys between two metrics_dict if specified
         if metrics_dict2 is not None:
@@ -41,6 +73,20 @@ class StrokeMetricsVisualizer:
 
 
     def init_filtered_dicts(self, metrics_dict, bucket_dict, metrics_to_plot):
+        """
+        Initializes filtered dictionaries for metrics and bucket assignments, where outliers are filtered out. Additionally,
+        removes metrics not in metrics_to_plot
+
+            Parameters:
+                metrics_dict (dict): Dictionary containing the stroke metrics.
+                bucket_dict (dict): Dictionary containing the bucket assignments for each metric.
+                metrics_to_plot (list): List of metrics to plot.
+            
+            Returns: 
+                filtered_dict (dict): Dictionary containing the filtered stroke metrics.
+                filtered_bucket_assgn (dict): Dictionary containing the filtered bucket assignments for each metric.
+         
+        """
         filtered_dict = {}
         filtered_bucket_assgn = {}
         for title, metric in metrics_dict.items():
@@ -57,6 +103,17 @@ class StrokeMetricsVisualizer:
         return filtered_dict, filtered_bucket_assgn
 
     def remove_outliers(self, data, method='std'):
+        """
+        Removes outliers from the data using standard deviation or IQR.
+
+            Parameters:
+                data (np.array): Array of data to filter.
+                method (str): Method to use for filtering. Choose 'std' or 'iqr'.
+            
+            Returns:
+                filter_mask (np.array): Boolean array indicating which data points to keep.
+        
+        """
         if method == 'std':
             mean = np.mean(data)
             std_dev = np.std(data)
@@ -74,9 +131,21 @@ class StrokeMetricsVisualizer:
         return filter_mask
 
     def precompute_bin_edges(self, num_bins=15):
+        """
+        Computes bin edges for histograms based on the global min and max of the data for each metric.
+        Handles the case where we are visualizing two experiments.
+
+            Parameters:
+                num_bins (int): Number of bins to use for the histograms.
+            
+            Returns:
+                bin_edges_dict (dict): Dictionary containing the bin edges for each metric.
+        """
         bin_edges_dict = {}
         
         combined_metrics = {}
+
+        # Comncatenating second metrics_dict if available
         if self.metrics_dict2 is not None:
             for key in set(self.metrics_dict.keys()).intersection(self.metrics_dict2):
                 combined_metrics[key] = np.concatenate((self.metrics_dict[key], self.metrics_dict2[key]))
@@ -95,6 +164,16 @@ class StrokeMetricsVisualizer:
         return bin_edges_dict
 
     def find_max_frequency_per_metric(self, bin_edges_dict):
+        """
+        Finds the maximum frequency for each metric to set the y-axis limits for plotting. Handles the 
+        case where we are visualizing two experiments.
+
+            Parameters:
+                bin_edges_dict (dict): Dictionary containing the bin edges for each metric.
+            
+            Returns:
+                max_freq_per_metric (dict): Dictionary containing the maximum frequency for each metric.
+        """
         max_freq_per_metric = {}
 
         for key, edges in bin_edges_dict.items():
@@ -118,6 +197,18 @@ class StrokeMetricsVisualizer:
         return max_freq_per_metric
 
     def plot_bucket_data(self, bucket_index, fig, axes, bin_edges_dict, max_freq_per_metric):
+        """
+        Plotting method to plot the data for a given bucket. Handles the case where we are visualizing two experiments.
+
+            Parameters:
+                bucket_index (int): The index of the bucket to plot.
+                fig (plt.Figure): The figure object to plot on.
+                axes (list): List of axes objects to plot on.
+                bin_edges_dict (dict): Dictionary containing the bin edges for each metric.
+                max_freq_per_metric (dict): Dictionary containing the maximum frequency for each metric.
+            
+        
+        """
         for ax, key in zip(axes, self.available_metrics_to_plot):
             ax.clear()
 
@@ -172,11 +263,34 @@ class StrokeMetricsVisualizer:
         fig.canvas.draw_idle()
 
     def _plot_bar(self, ax, data, bin_edges, bar_width, offset, color, alpha, label):
+        """
+        Helper method to plot a bar chart for a given metric.
+
+        Parameters:
+            ax (plt.Axes): The axes object to plot on.
+            data (np.array): The data to plot.
+            bin_edges (np.array): The bin edges for the histogram.
+            bar_width (float): The width of the bars.
+            offset (float): The offset to apply to the bars. As we are manually plotting the bars.
+            color (str): The color of the bars.
+            alpha (float): The transparency of the bars.
+            label (str): The label for the bars.
+        """
         counts, _ = np.histogram(data, bins=bin_edges)
         bin_centers = (bin_edges[:-1] + bin_edges[1:]) / 2
         ax.bar(bin_centers + offset, counts, width=bar_width, align='center', color=color, alpha=alpha, label=label)
 
     def interactive_plot_buckets(self, num_bins=15):
+        """
+        Creates an interactive visualization of the stroke metrics for each bucket, that allows
+        one to use a slider to navigate through the buckets. Handles the case where we are visualizing two experiments. Also
+        provides the option to plot the previous bucket.
+
+            Parameters:
+                num_bins (int): The number of bins to use for the histograms.
+        
+        
+        """
         ncols = np.ceil(len(self.metrics_dict) / 2).astype(int)
         fig, axes = plt.subplots(nrows=2, ncols=ncols, figsize=(15, 10))
         # plt.subplots_adjust(bottom=0.2)
@@ -196,9 +310,15 @@ class StrokeMetricsVisualizer:
         plt.show()
 
 def rgb_to_hex(r, g, b):
+    """
+    Helper function to convert RGB values to hex format.
+    """
     return '#%02x%02x%02x' % (int(r), int(g), int(b))
 
 def plot_3d_vx_rmvd(exp):
+    """
+    Plots the removed voxels in 3D space for a given experiment
+    """
     vrm = exp.v_rm_locs
     vcol = exp.v_rm_colors
 

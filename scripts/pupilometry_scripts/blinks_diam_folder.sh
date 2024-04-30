@@ -1,5 +1,9 @@
 #!/bin/bash
 
+####################################################################################################
+# Bash Script to extract blinks and pupil diameter from all folders named "000" within a specified folder
+####################################################################################################
+
 # Check if a folder path is provided
 if [ $# -ne 1 ]; then
     echo "Usage: $0 <folder-path>"
